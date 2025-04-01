@@ -17,12 +17,12 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:4
-msgid "LLMPolicy"
-msgstr "LLMPolicy"
+msgid "LLMPolicy.py"
+msgstr "LLMPolicy.py"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:6
 msgid "LLMPolicy类是使用LLM（Large Language Model）在检测到UI陷阱时生成输入事件的核心类。 主要负责在应用状态空间中遇到难以探索的UI状态时，利用LLM生成输入事件以增强功能场景覆盖。 该类提供了完整的LLM辅助事件生成策略的事件生成过程。 LLMPolicy所包含的主要方法有："
-msgstr "The LLMPolicy class is the core class that generates input events using LLM (Large Language Model) when UI traps are detected. It is mainly responsible for using LLM to generate input events to enhance functional scenario coverage when encountering UI states that are difficult to explore in the application state space. This class provides a complete event generation process for LLM-assisted event generation strategies. The main methods included in LLMPolicy are:"
+msgstr "The LLMPolicy.py class is the core class that generates input events using LLM (Large Language Model) when UI traps are detected. It is mainly responsible for using LLM to generate input events to enhance functional scenario coverage when encountering UI states that are difficult to explore in the application state space. This class provides a complete event generation process for LLM-assisted event generation strategies. The main methods included in LLMPolicy.py are:"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:11
 msgid "根据当前状态生成一个LLM辅助的随机事件。"
@@ -53,12 +53,12 @@ msgid "具体执行步骤如下："
 msgstr "The specific execution steps are as follows:"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:28
-msgid "步骤1：开始执行 LLMPolicy 类的事件生成过程。"
-msgstr "Step 1: Begin the event generation process of the LLMPolicy class."
+msgid "步骤1：开始执行 LLMPolicy.py 类的事件生成过程。"
+msgstr "Step 1: Begin the event generation process of the LLMPolicy.py class."
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:30
-msgid "步骤2：初始化 LLMPolicy 实例，设置日志记录器、动作历史记录等。"
-msgstr "Step 2: Initialize the LLMPolicy instance, set up the logger, action history, etc."
+msgid "步骤2：初始化 LLMPolicy.py 实例，设置日志记录器、动作历史记录等。"
+msgstr "Step 2: Initialize the LLMPolicy.py instance, set up the logger, action history, etc."
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:32
 msgid "步骤3：启动事件生成循环，直到输入管理器的事件计数结束或条件不再满足。"
@@ -137,8 +137,8 @@ msgid "步骤21：如果事件计数器达到输入管理器设定的事件计�
 msgstr "Step 21: If the event counter reaches the event count set by the input manager, end the event generation loop."
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:70
-msgid "步骤22：清理资源，结束 LLMPolicy 类的事件生成过程。"
-msgstr "Step 22: Clean up resources and end the event generation process of the LLMPolicy class."
+msgid "步骤22：清理资源，结束 LLMPolicy.py 类的事件生成过程。"
+msgstr "Step 22: Clean up resources and end the event generation process of the LLMPolicy.py class."
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:73
 msgid "LLM辅助事件生成策略的伪代码"
@@ -158,7 +158,7 @@ msgstr ":math:`\\textbf{Output:} Bug Report`"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:204
 msgid "LLMPolicy类中的数据结构"
-msgstr "Data Structures in LLMPolicy Class"
+msgstr "Data Structures in LLMPolicy.py Class"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:206
 msgid "**event_count**"
@@ -234,7 +234,7 @@ msgstr "``task`` String, records the task description for the LLM."
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:244
 msgid "LLMPolicy类中的成员方法"
-msgstr "Member Methods in LLMPolicy Class"
+msgstr "Member Methods in LLMPolicy.py Class"
 
 #: ../../source/part-designDocument/InputGenerator/llm.rst:247
 msgid "启动事件生成的方法"
