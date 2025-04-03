@@ -137,7 +137,8 @@ def safe_get_dict(view_dict, key, default=None):
     return view_dict[key] if (key in view_dict) else default
 
 
-def generate_report(img_path, html_path, bug_information=None, precondition_information=None, total_count = 0, total_time = 0, statistics_of_rules = None):
+def generate_report(img_path, html_path, bug_information=None, precondition_information=None, total_count=0,
+                    total_time=0, statistics_of_rules=None):
     '''Generate report for the test based on the executed events'''
     line_list = []
     bug_link_list = []
@@ -155,9 +156,10 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
                     interaction_end = report_screen['event_index']
             bug_link = ("<tr><td>" + str(index + 1) + "</td>" +
                         "<td>" + property_name + "</td>" +
-                        "<td><a href=\"#"+str(bug[0][0] + 1)+"\">"+str(bug[0][0] + 1)+"</a></td>" +
-                        "<td><a href=\"#"+str(bug[0][1] + 1) + "\">"+str(bug[0][0] + 1)+ " ~ " + str(bug[0][1] + 1) + "</a></td>" +
-                        "<td><a href=\"#"+str(bug[0][1] + 1) + "\">"+str(bug[0][1] + 1)+"</a></td></tr>")
+                        "<td><a href=\"#" + str(bug[0][0] + 1) + "\">" + str(bug[0][0] + 1) + "</a></td>" +
+                        "<td><a href=\"#" + str(bug[0][1] + 1) + "\">" + str(bug[0][0] + 1) + " ~ " + str(
+                        bug[0][1] + 1) + "</a></td>" +
+                        "<td><a href=\"#" + str(bug[0][1] + 1) + "\">" + str(bug[0][1] + 1) + "</a></td></tr>")
             bug_link_list.append(bug_link)
             bug_set.add(str(bug[0][0] + 1))
             bug_set.add(str(bug[0][1] + 1))
@@ -165,18 +167,21 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
         for index, statistic_rule in enumerate(statistics_of_rules):
             statistic = ("<tr><td>" + str(index + 1) + "</td>" +
                          "<td>" + statistic_rule + "</td>" +
-                         "<td>" + str(statistics_of_rules[statistic_rule][RULE_STATE.PRECONDITION_SATISFIED]) + "</td>" +
+                         "<td>" + str(
+                        statistics_of_rules[statistic_rule][RULE_STATE.PRECONDITION_SATISFIED]) + "</td>" +
                          "<td>" + str(statistics_of_rules[statistic_rule][RULE_STATE.PROPERTY_CHECKED]) + "</td>" +
-                         "<td>" + str(statistics_of_rules[statistic_rule][RULE_STATE.POSTCONDITION_VIOLATED]) + "</td>" +
-                         "<td>" + str(statistics_of_rules[statistic_rule][RULE_STATE.UI_OBJECT_NOT_FOUND]) + "</td></tr>"
+                         "<td>" + str(
+                        statistics_of_rules[statistic_rule][RULE_STATE.POSTCONDITION_VIOLATED]) + "</td>" +
+                         "<td>" + str(
+                        statistics_of_rules[statistic_rule][RULE_STATE.UI_OBJECT_NOT_FOUND]) + "</td></tr>"
                          )
             statistics.append(statistic)
     f_html = open(
-        os.path.join(html_path,  "bug_report.html"), 'w', encoding='utf-8'
+        os.path.join(html_path, "bug_report.html"), 'w', encoding='utf-8'
     )
     f_style = pkg_resources.resource_filename(
-                "kea", "resources/style/style.html"
-            )
+        "kea", "resources/style/style.html"
+    )
     f_style = open(f_style, 'r', encoding='utf-8')
     # f_style = open("droidbot/resources/style/style.html", 'r', encoding='utf-8')
     new_str = "<ul id=\"menu\">" + '\n'
@@ -188,26 +193,26 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
         img_name = report_screen['screen_shoot']
         img_file = os.path.join("all_states", img_name)
         line = (
-            "      <li><img src=\""
-            + img_file
-            + "\" class=\"img\"><p>"
-            + action_count+ " " + event_name
-            + "</p></li>"
-            + '\n'
+                "      <li><img src=\""
+                + img_file
+                + "\" class=\"img\"><p>"
+                + action_count + " " + event_name
+                + "</p></li>"
+                + '\n'
         )
         if bug_information is not None:
             if action_count in bug_set:
                 line = (
-                    "      <li><img src=\""
-                    + img_file
-                    + "\" class=\"img\""
-                    + " id=\""
-                    + action_count
-                    + "\">"
-                    +"<p>"
-                    + action_count+ " " + event_name
-                    + "</p></li>"
-                    + '\n'
+                        "      <li><img src=\""
+                        + img_file
+                        + "\" class=\"img\""
+                        + " id=\""
+                        + action_count
+                        + "\">"
+                        + "<p>"
+                        + action_count + " " + event_name
+                        + "</p></li>"
+                        + '\n'
                 )
         line_list.append(line)
     for item in line_list:
@@ -218,11 +223,13 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
         new_statistic_str = new_statistic_str + item
 
     if len(bug_information) > 0:
-        first_bug_infor = ("<div style=\"color:red;\">Time needed to found the first bug: " + str(bug_information[0][1]) + " seconds</div><br>")
+        first_bug_infor = ("<div style=\"color:red;\">Time needed to found the first bug: " + str(
+            bug_information[0][1]) + " seconds</div><br>")
     else:
         first_bug_infor = ("<div style=\"color:green;\">No bug was found.</div><br>")
     if len(precondition_information) > 0:
-        first_pre_infor = ("<div>Time needed to satisfy the precondition at the first time: " + str(precondition_information[0]) + " seconds</div><br>")
+        first_pre_infor = ("<div>Time needed to satisfy the precondition at the first time: " + str(
+            precondition_information[0]) + " seconds</div><br>")
     else:
         first_pre_infor = ("<div style=\"color:red;\">No precondition has been satisfied.</div><br>")
 
@@ -231,16 +238,18 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
     new_str = new_str + "   </ul>"
     old_str = "<ul id=\"menu\"></ul>"
     old_bug_str = "<tr><td>bug_link</td><td>bug_link</td><td>bug_link</td><td>bug_link</td></tr>"
-    old_first_str="<div>Time</div>"
-    old_num_str="<div>Num</div>"
-    old_statistic_str="<tr><td>property statistic</td><td>property statistic</td><td>property statistic</td><td>property statistic</td></tr>"
+    old_first_str = "<div>Time</div>"
+    old_num_str = "<div>Num</div>"
+    old_statistic_str = "<tr><td>property statistic</td><td>property statistic</td><td>property statistic</td><td>property statistic</td></tr>"
     if bug_information is None or len(bug_information) == 0:
         new_num_str = "<div style=\"color:green;\">Found 0 bugs.</div><br>"
     else:
         new_num_str = "<div style=\"color:red;\">Found " + str(len(bug_information)) + " bugs.</div><br>"
 
     if precondition_information is not None:
-        new_num_str = new_num_str + "<div> Satisfied "+ str(len(precondition_information)) + " preconditions</div><br>" + "<div>Total Executed Events: " + str(total_count) + " </div>"
+        new_num_str = new_num_str + "<div> Satisfied " + str(
+            len(precondition_information)) + " preconditions</div><br>" + "<div>Total Executed Events: " + str(
+            total_count) + " </div>"
     else:
         new_num_str = new_num_str + "<div>Satisfied 0 preconditions.</div>"
     for line in f_style:
@@ -261,14 +270,16 @@ def generate_report(img_path, html_path, bug_information=None, precondition_info
             continue
         f_html.write(line)
 
-def get_yml_config() -> Dict[str,str]:
+
+def get_yml_config() -> Dict[str, str]:
     if not any(os.path.exists(ymal_path := os.path.join(os.getcwd(), _)) for _ in ["config.yml", "config.yaml"]):
         raise FileNotFoundError("config.yml not found")
 
     with open(ymal_path, "r") as fp:
-        config_dir:Dict[str, str] = yaml.safe_load(fp)
-    
+        config_dir: Dict[str, str] = yaml.safe_load(fp)
+
     return config_dir
+
 
 def deprecated(reason):
     def decorator(func):
@@ -276,8 +287,11 @@ def deprecated(reason):
         def wrapper(*args, **kwargs):
             warnings.warn(f"Function '{func.__name__}' is deprecated: {reason}", DeprecationWarning, stacklevel=2)
             return func(*args, **kwargs)
+
         return wrapper
+
     return decorator
+
 
 class Time(object):
     def __init__(self):
@@ -285,6 +299,7 @@ class Time(object):
 
     def get_time_duration(self):
         return str(int(time.time() - self.start_time))
+
 
 class SingletonMeta(type):
     """
@@ -305,17 +320,18 @@ class SingletonMeta(type):
             cls._instances[cls] = instance
         return cls._instances[cls]
 
+
 def sanitize_app_package_name(options):
     """validate whether the app with the package name has been already installed on the device
     """
     import subprocess
 
     if options.device_serial is None:
-        raise AttributeError(f"device serial is None") 
+        raise AttributeError(f"device serial is None")
 
     package_list = []
     if not options.is_harmonyos:
-        cmd = ["adb", "-s", options.device_serial, "shell", "pm", "list", "package"] 
+        cmd = ["adb", "-s", options.device_serial, "shell", "pm", "list", "package"]
         dump_packages = subprocess.check_output(cmd, text=True)
         package_list = [_.split(":")[-1] for _ in dump_packages.split()]
     else:
@@ -325,10 +341,11 @@ def sanitize_app_package_name(options):
         package_list = dump_packages.split()
 
     if not (package_name := options.apk_path) in package_list:
-        raise AttributeError(f"No pacakge named {package_name} installed on device.") 
+        raise AttributeError(f"No pacakge named {package_name} installed on device.")
     else:
         print(f"pacakge named {package_name} is valid and already installed on device.")
-        
+
+
 def sanitize_args(options):
     """sanitize of the args
     
@@ -340,20 +357,22 @@ def sanitize_args(options):
     If `apk_path` is not an apk file or a hap file, `apk_path` will be checked to see whether it denotes a valid app package name.
     It allows us to test any existing app which has already been installed on the device.
     """
-    if options.device_serial is None:   
-        identify_device_serial(options=options) 
+    if options.device_serial is None:
+        identify_device_serial(options=options)
 
     if options.apk_path is None:
         raise AttributeError("No target app. Use -a to specify the app to be tested")
-    
+
     if not str(options.apk_path).endswith((".apk", ".hap")):
         options.is_package = True
         COLOR_YELLOW = "\033[93m"
         COLOR_RESET = "\033[0m"
-        print(f"{COLOR_YELLOW}Warning: {options.apk_path} is not a valid apk or hap file ... may be an app package name, trying to validate this app package ...{COLOR_RESET}")
+        print(
+            f"{COLOR_YELLOW}Warning: {options.apk_path} is not a valid apk or hap file ... may be an app package name, trying to validate this app package ...{COLOR_RESET}")
         sanitize_app_package_name(options)
     else:
         options.is_package = False
+
 
 def load_properties_from_dir(property_files):
     if property_files is None:
@@ -375,6 +394,7 @@ def load_properties_from_dir(property_files):
             raise AttributeError("Property files is none. Reset the property file or property directory.")
     return new_property_files
 
+
 def save_log(logger, output_dir):
     # output logging into a txt file
     log_dir = os.path.join(output_dir, "records.log")
@@ -383,6 +403,7 @@ def save_log(logger, output_dir):
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
+
 
 def identify_device_serial(options):
     """

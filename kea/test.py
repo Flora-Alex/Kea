@@ -48,17 +48,6 @@ all_splits = text_splitter.split_documents(docs)
 # Index chunks
 _ = vector_store.add_documents(documents=all_splits)
 
-# Define prompt for question-answering
-prompt = hub.pull("rlm/rag-prompt")
-
-
-# Define state for application
-class State(TypedDict):
-    question: str
-    context: List[Document]
-    answer: str
-
-
 graph_builder = StateGraph(MessagesState)
 
 
