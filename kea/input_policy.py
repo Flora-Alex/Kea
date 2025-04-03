@@ -3,7 +3,30 @@ import logging
 import random
 import copy
 import re
+import getpass
+import bs4
 import time
+
+from langchain.chat_models import init_chat_model
+from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_openai import OpenAIEmbeddings
+from langgraph.graph import MessagesState, StateGraph
+from langchain_core.tools import tool
+from langchain_community.document_loaders import UnstructuredMarkdownLoader
+from langchain_core.documents import Document
+from langchain_core.messages import SystemMessage
+from langgraph.prebuilt import ToolNode
+from langchain import hub
+from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from typing_extensions import TypedDict
+from typing import List
+from langgraph.graph import END
+from langgraph.prebuilt import ToolNode, tools_condition
+from IPython.display import Image, display
+from langgraph.checkpoint.memory import MemorySaver
+
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -56,6 +79,7 @@ POLICY_RANDOM = "random"
 POLICY_NONE = "none"
 POLICY_LLM = "llm"
 
+
 class InputInterruptedException(Exception):
     pass
 
@@ -106,10 +130,10 @@ class InputPolicy(object):
                     self.from_state = self.to_state
                 else:
                     self.from_state = self.device.get_current_state()
-                
+
                 # set the from_state to droidbot to let the pdl get the state
                 self.device.from_state = self.from_state
-                
+
                 if self.event_count == 0:
                     # If the application is running, close the application.
                     event = KillAppEvent(app=self.app)
@@ -380,9 +404,9 @@ class RandomPolicy(KeaInputPolicy):
         self.number_of_events_that_restart_app = number_of_events_that_restart_app
         self.clear_and_reinstall_app = clear_and_reinstall_app
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.output_dir=output_dir
+        self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
-        self.disable_rotate=disable_rotate
+        self.disable_rotate = disable_rotate
         self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
 
     def generate_event(self):
@@ -477,11 +501,11 @@ class GuidedPolicy(KeaInputPolicy):
     generate events around the main path
     """
 
-    def __init__(self, device, app, kea=None, allow_to_generate_utg=False,disable_rotate=False,output_dir=None):
+    def __init__(self, device, app, kea=None, allow_to_generate_utg=False, disable_rotate=False, output_dir=None):
         super(GuidedPolicy, self).__init__(device, app, kea, allow_to_generate_utg)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
-        save_log(self.logger,self.output_dir)
+        save_log(self.logger, self.output_dir)
         self.disable_rotate = disable_rotate
         if len(self.kea.all_mainPaths):
             self.logger.info("Found %d mainPaths" % len(self.kea.all_mainPaths))
@@ -744,17 +768,33 @@ class LLMPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
-            output_dir=None
+            output_dir=None,
     ):
         super(LLMPolicy, self).__init__(device, app, kea)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
-        save_log(self.logger,self.output_dir)
+        save_log(self.logger, self.output_dir)
         self.__action_history = []
         self.__all_action_history = set()
         self.__activity_history = set()
         self.from_state = None
-        self.task = "You are an expert in App GUI testing. Please guide the testing tool to enhance the coverage of functional scenarios in testing the App based on your extensive App testing experience. "
+        self.task = ("You are an expert in App GUI testing. Please guide the testing tool to enhance the coverage of "
+                     "functional scenarios in testing the App based on your extensive App testing experience.")
+
+        # if not os.environ.get("OPENAI_API_KEY"):
+        #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
+        self.llm = init_chat_model("gpt-4o-mini", model_provider="openai")
+        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+        self.vector_store = InMemoryVectorStore(self.embeddings)
+
+        markdown_path = "https://github.com/openatx/uiautomator2/blob/master/README_CN.md"
+        loader = UnstructuredMarkdownLoader(markdown_path)
+        data = loader.load()
+        assert len(data) == 1
+        assert isinstance(data[0], Document)
+        readme_content = data[0].page_content
+        print(readme_content[:250])
+        self.task += f"\n\n{readme_content}"
 
     def start(
             self, input_manager: "InputManager"
@@ -833,6 +873,81 @@ class LLMPolicy(RandomPolicy):
                 traceback.print_exc()
             self.event_count += 1
         self.tear_down()
+
+    @tool(response_format="content_and_artifact")
+    def retrieve(self, query: str):
+        """
+        Retrieve information related to a query.
+        """
+        retrieved_docs = self.vector_store.similarity_search(query, k=2)
+        serialized = "\n\n".join(
+            f"Source: {doc.metadata}\n" f"Content: {doc.page_content}"
+            for doc in retrieved_docs
+        )
+        return serialized, retrieved_docs
+
+    # Step 1: Generate an AIMessage that may include a tool-call to be sent.
+    def query_or_respond(self, state: MessagesState):
+        """
+        Generate tool call for retrieval or respond.
+        """
+        llm_with_tools = self.llm.bind_tools([self.retrieve])
+        response = llm_with_tools.invoke(state["messages"])
+        # MessagesState appends messages to state instead of overwriting
+        return {"messages": [response]}
+
+    # Step 3: Generate a response using the retrieved content.
+    def _get_action_with_LLM(self, state: MessagesState, current_state, action_history, activity_history):
+        """
+        Generate answer.
+        """
+        activity = current_state.foreground_activity
+        action_history_text = "\n".join(action_history)
+        activity_history_text = "\n".join(activity_history)
+        # Get generated ToolMessages
+        recent_tool_messages = [message for message in reversed(state["messages"]) if message.type == "tool"]
+        tool_messages = recent_tool_messages[::-1]
+        docs_content = "\n\n".join(doc.content for doc in tool_messages)
+
+        task_prompt = (
+                self.task
+                + f"Currently, the App is stuck on the {activity} page, unable to explore more features. You task is to select an action based on the current GUI Infomation to perform next and help the app escape the UI tarpit."
+        )
+        visited_page_prompt = (
+                f"I have already visited the following activities: \n"
+                + "\n".join(activity_history)
+        )
+        history_prompt = (
+                f"I have already completed the following steps to leave {activity} page but failed: \n "
+                + ";\n ".join(action_history)
+        )
+        state_prompt, candidate_actions = current_state.get_described_actions()
+        question = "Which action should I choose next? Just return the action id and nothing else.\nIf no more action is needed, return -1."
+        system_message_content = f"{task_prompt}\n{state_prompt}\n{visited_page_prompt}\n{history_prompt}\n{question}\n{docs_content}"
+
+        conversation_messages = [
+            message for message in state["messages"]
+            if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
+        ]
+        prompt = [SystemMessage(system_message_content)] + conversation_messages
+        response = self.llm.invoke(prompt)
+
+        match = re.search(r"\d+", response)
+        if not match:
+            return None, candidate_actions
+        idx = int(match.group(0))
+        selected_action = candidate_actions[idx]
+        if isinstance(selected_action, SetTextEvent):
+            view_text = current_state.get_view_desc(selected_action.view)
+            question = f"What text should I enter to the {view_text}? Just return the text and nothing else."
+            prompt = f"{task_prompt}\n{state_prompt}\n{question}"
+            print(prompt)
+            response = self.llm.invoke(prompt)
+            print(f"response: {response}")
+            selected_action.text = response.replace('"', "")
+            if len(selected_action.text) > 30:  # heuristically disable long text input
+                selected_action.text = ""
+        return selected_action, candidate_actions
 
     def generate_llm_event(self):
         """
@@ -987,61 +1102,6 @@ class LLMPolicy(RandomPolicy):
         self.__all_action_history.add("- stop the app")
         self._event_trace += EVENT_FLAG_STOP_APP
         return IntentEvent(intent=stop_app_intent)
-
-    def _query_llm(self, prompt, model_name="gpt-3.5-turbo"):
-        # TODO: replace with your own LLM
-
-        from openai import OpenAI
-
-        gpt_url = ""
-        gpt_key = ""
-        client = OpenAI(base_url=gpt_url, api_key=gpt_key)
-
-        messages = [{"role": "user", "content": prompt}]
-        completion = client.chat.completions.create(
-            messages=messages, model=model_name, timeout=30
-        )
-        res = completion.choices[0].message.content
-        return res
-
-    def _get_action_with_LLM(self, current_state, action_history, activity_history):
-        activity = current_state.foreground_activity
-        task_prompt = (
-                self.task
-                + f"Currently, the App is stuck on the {activity} page, unable to explore more features. You task is to select an action based on the current GUI Infomation to perform next and help the app escape the UI tarpit."
-        )
-        visisted_page_prompt = (
-                f"I have already visited the following activities: \n"
-                + "\n".join(activity_history)
-        )
-        # all_history_prompt = f'I have already completed the following actions to explore the app: \n' + '\n'.join(all_action_history)
-        history_prompt = (
-                f"I have already completed the following steps to leave {activity} page but failed: \n "
-                + ";\n ".join(action_history)
-        )
-        state_prompt, candidate_actions = current_state.get_described_actions()
-        question = "Which action should I choose next? Just return the action id and nothing else.\nIf no more action is needed, return -1."
-        prompt = f"{task_prompt}\n{state_prompt}\n{visisted_page_prompt}\n{history_prompt}\n{question}"
-        print(prompt)
-        response = self._query_llm(prompt)
-        print(f"response: {response}")
-
-        match = re.search(r"\d+", response)
-        if not match:
-            return None, candidate_actions
-        idx = int(match.group(0))
-        selected_action = candidate_actions[idx]
-        if isinstance(selected_action, SetTextEvent):
-            view_text = current_state.get_view_desc(selected_action.view)
-            question = f"What text should I enter to the {view_text}? Just return the text and nothing else."
-            prompt = f"{task_prompt}\n{state_prompt}\n{question}"
-            print(prompt)
-            response = self._query_llm(prompt)
-            print(f"response: {response}")
-            selected_action.text = response.replace('"', "")
-            if len(selected_action.text) > 30:  # heuristically disable long text input
-                selected_action.text = ""
-        return selected_action, candidate_actions
 
     def get_last_state(self):
         return self.from_state
