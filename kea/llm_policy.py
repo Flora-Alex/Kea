@@ -6,7 +6,7 @@ from peft import (
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_int8_training,
+    prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
 from transformers import LlamaForCausalLM, LlamaTokenizer
@@ -86,7 +86,7 @@ class LLMAgent(nn.Module):
         if not self.load_8bit:
             model.half().to(self.device)
         else:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=True)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True,)
 
         return model
 
@@ -123,7 +123,7 @@ class LLMAgent(nn.Module):
         if not self.load_8bit:
             model.half()
         else:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=True)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
@@ -151,9 +151,6 @@ class LLMAgent(nn.Module):
         # self.critic = self._init_critic(critic_weights).to(self.device)
 
     def get_value(self, x):
-        if type(x) != list:
-            x = [self.obs2text(o)["prompt"] for o in x]
-
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs["attention_mask"].to(self.device)
@@ -162,39 +159,29 @@ class LLMAgent(nn.Module):
             value = self.critic(input_ids, attention_mask=attention_mask)
         return value
 
-    def get_action_and_value(self, obs, action=None, is_warmup=False, return_value=True):
-        text_obs = [self.obs2text(o) for o in obs]
-        prompt = [o["prompt"] for o in text_obs]
+    def get_action_and_value(self, prompt, action_list, action=None, is_warmup=False, return_value=True):
+        prompt_num = len(prompt)
+        action_num = len(action_list)
 
-        action_list = [o["action"] for o in text_obs]
-        action_ids = [[self.template2action[item] for item in env] for env in action_list]
-
-        prompt_nums = len(prompt)
-        action_nums = [len(item) for item in action_list]
-
-        sequence = []
-        for p, ac in zip(prompt, action_list):
-            sequence += [p + " " + a for a in ac]
+        sequence = [f"{p} {a}" for p, a in zip(prompt, action_list)]
 
         inputs = self.tokenizer(sequence, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(self.device)
 
         attention_mask = inputs["attention_mask"].to(self.device)
-
         if is_warmup:
             with torch.no_grad():
                 outputs = self.actor(input_ids, attention_mask=attention_mask)
         else:
             outputs = self.actor(input_ids, attention_mask=attention_mask)
 
-        action_list = [item for sublist in action_list for item in sublist]
         self.action_list_ids = self.tokenizer(action_list, return_tensors="pt", padding=True)
 
         self.action_list_length = torch.sum(self.action_list_ids["attention_mask"], dim=-1) - 1  # delete first token
-
         sequence_length = torch.sum(attention_mask, dim=-1)
         action_index = [[end - start, end] for start, end in zip(self.action_list_length, sequence_length)]
 
+        # maybe no need to use it, directly use logits
         logits = torch.log_softmax(outputs.logits, dim=-1)
 
         logits = logits[:, :-1, :]
@@ -204,7 +191,6 @@ class LLMAgent(nn.Module):
         slices = [gen_logits[i, start - 1:end - 1] for i, (start, end) in enumerate(action_index)]
 
         action_logits = torch.stack([torch.sum(s) for s in slices])
-
         if self.normalization_mode == 'token':
             action_logits = action_logits / self.action_list_length.to(self.device)
         elif self.normalization_mode == 'word':
@@ -215,153 +201,17 @@ class LLMAgent(nn.Module):
         else:
             assert 1 == 2
 
-        actions = []
-        log_probs = []
-        entroy = []
+        action_logits = action_logits.reshape(-1, action_num).float()
 
-        for i in range(prompt_nums):
-            logits = action_logits[sum(action_nums[:i]):sum(action_nums[:i + 1])].reshape(-1, action_nums[i]).float()
-
-            probs = Categorical(logits=logits)
-
-            if action is None:
-                cur_action = probs.sample()[0]
-                cur_action = cur_action.view(-1)
-                real_action = torch.tensor([action_ids[i][cur_action.item()]], dtype=torch.int32).to(self.device)
-            else:
-                real_action = action[i].view(-1)
-                cur_action = torch.tensor([action_ids[i].index(real_action.item())], dtype=torch.int32).to(self.device)
-
-            actions.append(real_action)
-            log_probs.append(probs.log_prob(cur_action))
-            entroy.append(probs.entropy())
-
-        action = torch.cat(actions)
-        log_probs = torch.cat(log_probs)
-        entroy = torch.cat(entroy)
+        probs = Categorical(logits=action_logits)
+        if action is None:
+            action = probs.sample()
 
         if return_value:
-            return action, log_probs, entroy, self.get_value(prompt)
+            return action, probs.log_prob(action), probs.entropy(), self.get_value(prompt)
         else:
-            return action, log_probs, entroy, None
+            return action, probs.log_prob(action), probs.entropy(), None
 
-    # TODO: Rewrite this function to use our prompts
-    def obs2text(self, obs):
-        text = ""
-
-        # 假设 obs 中的索引和字段如下对应（你可以根据需要调整这些索引）
-        clickable = obs[0]
-        scrollable = obs[1]
-        checkable = obs[2]
-        long_clickable = obs[3]
-        editable = obs[4]
-        rotatable = obs[5]
-        searchable = obs[6]
-        swipeable = obs[7]
-
-
-
-
-        actionable = clickable or scrollable or checkable or long_clickable or editable or searchable or swipeable
-
-        object_text = ""
-        action_list = []
-
-        if actionable:
-            action_phrases = []
-            action_phrases.append("press any key")
-            action_list.append(8)
-
-            if editable:
-                action_phrases.append("edit the screen")
-                action_list.append(0)
-            if searchable:
-                action_phrases.append("search the screen")
-                action_list.append(16)
-            if editable and searchable:
-                action_phrases.append("edit the screen and search the screen")
-                action_list.append(17)
-
-            if clickable :
-                action_phrases.append("click on the screen")
-                action_list.append(1)
-                action_list.append(2)
-            if swipeable:
-                action_phrases.append("swipe the screen")
-                action_list.append(3)
-
-            if scrollable:
-                action_phrases.append("scroll the screen up or down")
-                action_list.append(4)
-                action_list.append(5)
-                action_list.append(6)
-                action_list.append(7)
-            if rotatable:
-                action_phrases.append("rotate the screen")
-                action_list.append(12)
-                action_list.append(13)
-
-            object_text = "You can " + ", ".join(action_phrases) + "."
-
-        else:
-            action_phrases = []
-            object_text = "There are no available interactions on the screen at the moment."
-            action_phrases.append("spawn a new event")
-            action_list.append(10)  # 对应 "spawn event"
-
-            action_phrases.append("kill the app")
-            action_list.append(11)  # 对应 "kill app event"
-
-            action_phrases.append("fresh reinstall the app")
-            action_list.append(14)  # 对应 "fresh reinstall app"
-
-            action_phrases.append("kill and restart the app")
-            action_list.append(15)  # 对应 "kill and restart app"
-
-            action_phrases.append("exit the app")
-            action_list.append(18)
-
-            object_text = "But you can " + ", ".join(action_phrases) + "."
-
-        text += object_text
-
-        # template for target
-        target_template = " In order to complete your goal, "
-        text += target_template
-
-        # template for next step
-        next_step_text = "your next step is to..."
-        text += next_step_text
-
-        self.action_template = [
-            "edit",  # 对应 SetTextEvent 0
-            "click",  # 对应 TouchEvent 1
-            "long click",  # 对应 LongTouchEvent 2
-            "swipe",  # 对应 SwipeEvent 3
-            "scroll up",  # 对应 ScrollEvent，方向为 UP 4
-            "scroll down",  # 对应 ScrollEvent，方向为 DOWN 5
-            "scroll left",  # 对应 ScrollEvent，方向为 LEFT 6
-            "scroll right",  # 对应 ScrollEvent，方向为 RIGHT 7
-            "key event",  # 对应 KeyEvent 8
-            "intent event",  # 对应 IntentEvent 9
-            "spawn event",  # 对应 SpawnEvent 10
-            "kill app event",  # 对应 KillAppEvent 11
-            "rotate device to landscape",  # 对应 RotateDeviceToLandscapeEvent 12
-            "rotate device to portrait",  # 对应 RotateDeviceToPortraitEvent 13
-            "fresh reinstall app",  # 对应 ReInstallAppEvent 14
-            "kill and restart app",  # 对应 KillAndRestartAppEvent 15
-            "search",  # 对应 SearchEvent 16
-            "set text and search",  # 对应 SetTextAndSearchEvent 17
-            "exit",  # 对应 ExitEvent 18
-        ]
-
-        self.template2action = {
-            k: i for i, k in enumerate(self.action_template)
-        }
-
-        actions = [self.action_template[i] for i in action_list]
-
-        return {"prompt": text, "action": actions}
 
 ## Note that the following code is modified from
 ## https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/training/utils/model/reward_model.py

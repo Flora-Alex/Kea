@@ -48,6 +48,8 @@ from .utg import UTG
 from .kea import CHECK_RESULT
 from typing import TYPE_CHECKING, Dict
 
+from llm_policy import LLMAgent
+
 if TYPE_CHECKING:
     from .input_manager import InputManager
     from .kea import Kea
@@ -784,12 +786,12 @@ class LLMPolicy(RandomPolicy):
         self.__all_action_history = set()
         self.__activity_history = set()
         self.from_state = None
-        self.task = ("You are an expert in App GUI testing. Please guide the testing tool to enhance the coverage of "
-                     "functional scenarios in testing the App based on your extensive App testing experience.")
+        self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
+                     "functional scenarios in testing the App based on my extensive App testing experience.")
 
         if not os.environ.get("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
-        self.llm = init_chat_model("gpt-4o-mini", model_provider="openai")
+        self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         self.vector_store = InMemoryVectorStore(self.embeddings)
 
