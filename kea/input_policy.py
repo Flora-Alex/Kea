@@ -759,6 +759,9 @@ class LLMPolicy(RandomPolicy):
     use LLM to generate input when detected ui tarpit
     """
 
+    def tear_down(self):
+        pass
+
     def __init__(
             self,
             device,
@@ -768,7 +771,7 @@ class LLMPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
-            output_dir=None,
+            output_dir=None
     ):
         super(LLMPolicy, self).__init__(device, app, kea)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -781,13 +784,13 @@ class LLMPolicy(RandomPolicy):
         self.task = ("You are an expert in App GUI testing. Please guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on your extensive App testing experience.")
 
-        # if not os.environ.get("OPENAI_API_KEY"):
-        #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
+        if not os.environ.get("OPENAI_API_KEY"):
+            os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.llm = init_chat_model("gpt-4o-mini", model_provider="openai")
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         self.vector_store = InMemoryVectorStore(self.embeddings)
 
-        markdown_path = "https://github.com/openatx/uiautomator2/blob/master/README_CN.md"
+        markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
         loader = UnstructuredMarkdownLoader(markdown_path)
         data = loader.load()
         assert len(data) == 1
