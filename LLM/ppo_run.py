@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-from policy import LLMAgent
+from llm_policy import LLMAgent
 from ppo_env import EnvRunner
 from ppo_trainer import PPOTrainer
 
@@ -134,7 +134,7 @@ if __name__ == "__main__":
     # Create the environment runner from ppo_env.py (fully decoupled)
     env_runner = EnvRunner(args, run_name, env_params, device)
 
-    # Initialize the policy from policy.py
+    # Initialize the policy from llm_policy.py
     if args.resume:
         agent = LLMAgent(normalization_mode=args.normalization_mode, load_path=args.load_path, load_8bit=args.load_8bit)
     else:

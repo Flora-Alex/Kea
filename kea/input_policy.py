@@ -48,6 +48,8 @@ from .utg import UTG
 from .kea import CHECK_RESULT
 from typing import TYPE_CHECKING, Dict
 
+from llm_policy import LLMAgent
+
 if TYPE_CHECKING:
     from .input_manager import InputManager
     from .kea import Kea
@@ -774,7 +776,8 @@ class LLMPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
-            output_dir=None
+            output_dir=None,
+            inference=True
     ):
         super(LLMPolicy, self).__init__(device, app, kea)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -784,12 +787,15 @@ class LLMPolicy(RandomPolicy):
         self.__all_action_history = set()
         self.__activity_history = set()
         self.from_state = None
-        self.task = ("You are an expert in App GUI testing. Please guide the testing tool to enhance the coverage of "
-                     "functional scenarios in testing the App based on your extensive App testing experience.")
+        self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
+                     "functional scenarios in testing the App based on my extensive App testing experience.")
 
         if not os.environ.get("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
-        self.llm = init_chat_model("gpt-4o-mini", model_provider="openai")
+        self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
+        if inference:
+            self.llm.actor.eval()
+            self.llm.actor.eval()
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         self.vector_store = InMemoryVectorStore(self.embeddings)
 
@@ -801,84 +807,6 @@ class LLMPolicy(RandomPolicy):
         readme_content = data[0].page_content
         print(readme_content[:250])
         self.task += f"\n\n{readme_content}"
-
-    def start(
-            self, input_manager: "InputManager"
-    ):  # TODO do not need to write start here?
-        """
-        start producing events
-        :param input_manager: instance of InputManager
-        """
-        self.event_count = 0
-        self.input_manager = input_manager
-        while input_manager.enabled and self.event_count < input_manager.event_count:
-            try:
-                if self.device.is_harmonyos == False and hasattr(self.device, "u2"):
-                    self.device.u2.set_fastinput_ime(True)
-
-                self.logger.info("Exploration action count: %d" % self.event_count)
-
-                if self.to_state is not None:
-                    self.from_state = self.to_state
-                else:
-                    self.from_state = self.device.get_current_state()
-
-                if self.event_count == 0:
-                    # If the application is running, close the application.
-                    event = KillAppEvent(app=self.app)
-                elif self.event_count == 1:
-                    event = IntentEvent(self.app.get_start_intent())
-                else:
-                    if input_manager.sim_calculator.detected_ui_tarpit(input_manager):
-                        # If detected a ui tarpit
-                        if input_manager.sim_calculator.sim_count > MAX_NUM_QUERY_LLM:
-                            # If query LLM too much
-                            self.logger.info(f"query too much. go back!")
-                            event = KeyEvent(name="BACK")
-                            self.clear_action_history()
-                            input_manager.sim_calculator.sim_count = 0
-                        else:
-                            # stop random policy, start query LLM
-                            event = self.generate_llm_event()
-                    else:
-                        event = self.generate_event()
-
-                if event is not None:
-                    self.device.save_screenshot_for_report(
-                        event=event, current_state=self.from_state
-                    )
-                    input_manager.add_event(event)
-                self.to_state = self.device.get_current_state()
-                self.last_event = event
-                if self.allow_to_generate_utg:
-                    self.update_utg()
-
-                bug_report_path = os.path.join(self.device.output_dir, "all_states")
-                generate_report(
-                    bug_report_path,
-                    self.device.output_dir,
-                    self.triggered_bug_information,
-                    self.time_needed_to_satisfy_precondition,
-                    self.device.cur_event_count,
-                    self.time_recoder.get_time_duration(),
-                )
-            except KeyboardInterrupt:
-                break
-            except InputInterruptedException as e:
-                self.logger.info("stop sending events: %s" % e)
-                self.logger.info("action count: %d" % self.event_count)
-                break
-
-            except RuntimeError as e:
-                self.logger.info("RuntimeError: %s, stop sending events" % e)
-                break
-            except Exception as e:
-                self.logger.warning("exception during sending events: %s" % e)
-                import traceback
-
-                traceback.print_exc()
-            self.event_count += 1
-        self.tear_down()
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -892,17 +820,7 @@ class LLMPolicy(RandomPolicy):
         )
         return serialized, retrieved_docs
 
-    # Step 1: Generate an AIMessage that may include a tool-call to be sent.
-    def query_or_respond(self, state: MessagesState):
-        """
-        Generate tool call for retrieval or respond.
-        """
-        llm_with_tools = self.llm.bind_tools([self.retrieve])
-        response = llm_with_tools.invoke(state["messages"])
-        # MessagesState appends messages to state instead of overwriting
-        return {"messages": [response]}
-
-    # Step 3: Generate a response using the retrieved content.
+    # Generate a response using the retrieved content.
     def _get_action_with_LLM(self, state: MessagesState, current_state, action_history, activity_history):
         """
         Generate answer.
@@ -917,45 +835,49 @@ class LLMPolicy(RandomPolicy):
 
         task_prompt = (
                 self.task
-                + f"Currently, the App is stuck on the {activity} page, unable to explore more features. You task is to select an action based on the current GUI Infomation to perform next and help the app escape the UI tarpit."
+                + f"Currently, the App is running on the {activity} page. My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."
         )
+
         visited_page_prompt = (
                 f"I have already visited the following activities: \n"
                 + "\n".join(activity_history)
         )
+
         history_prompt = (
                 f"I have already completed the following steps to leave {activity} page but failed: \n "
                 + ";\n ".join(action_history)
         )
-        state_prompt, candidate_actions = current_state.get_described_actions()
-        question = "Which action should I choose next? Just return the action id and nothing else.\nIf no more action is needed, return -1."
-        system_message_content = f"{task_prompt}\n{state_prompt}\n{visited_page_prompt}\n{history_prompt}\n{question}\n{docs_content}"
 
-        conversation_messages = [
-            message for message in state["messages"]
-            if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
-        ]
-        prompt = [SystemMessage(system_message_content)] + conversation_messages
-        response = self.llm.invoke(prompt)
+        state_prompt, _ = current_state.get_described_actions()
+        candidate_actions = current_state.get_possible_input()
+        candidate_actions.append(KeyEvent(name="BACK"))
+        if not self.disable_rotate:
+            candidate_actions.append(RotateDevice())
 
-        match = re.search(r"\d+", response)
-        if not match:
-            return None, candidate_actions
-        idx = int(match.group(0))
+        actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
+        actions_prompt = (
+                f"Here are the actions I can take: \n"
+                + "\n".join(actions)
+        )
+
+        question = "Which action should I choose next? I shall choose No. "
+        system_message_content = f"{task_prompt}\n{docs_content}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
+
+
+        obs = {"prompt": system_message_content, "action": actions}
+        idx= self.llm.get_action_and_value(obs, return_value= False)[0].cpu().numpy()
         selected_action = candidate_actions[idx]
+
         if isinstance(selected_action, SetTextEvent):
             view_text = current_state.get_view_desc(selected_action.view)
-            question = f"What text should I enter to the {view_text}? Just return the text and nothing else."
-            prompt = f"{task_prompt}\n{state_prompt}\n{question}"
-            print(prompt)
-            response = self.llm.invoke(prompt)
-            print(f"response: {response}")
-            selected_action.text = response.replace('"', "")
+            question = f"What text should I enter to the {view_text} at maximum 30 chars? It shall be:\n"
+            prompt = f"{state_prompt}{actions[idx]}\n{question}"
+            generated_text = self.llm.generate_text(prompt)
             if len(selected_action.text) > 30:  # heuristically disable long text input
                 selected_action.text = ""
         return selected_action, candidate_actions
 
-    def generate_llm_event(self):
+    def generate_event(self):
         """
         generate an LLM event
         @return:

@@ -1,34 +1,25 @@
 import sys
 
-import fire
-import gradio as gr
 import torch
 import transformers
 from peft import (
     LoraConfig,
     get_peft_model,
     get_peft_model_state_dict,
-    prepare_model_for_int8_training,
+    prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
-from transformers import LlamaForCausalLM, LlamaTokenizer
-from peft import PeftModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel, TaskType
 
-import torch.nn.functional as F
 import os
 import torch.nn as nn
 import numpy as np
 
-from critic import Critic
 from torch.distributions.categorical import Categorical
 import copy
 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root)
-
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
-
+root = os.path.dirname(os.path.abspath(__file__))
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -41,12 +32,12 @@ class LLMAgent(nn.Module):
         super().__init__()
 
         self.load_8bit = load_8bit
-        self.base_model = 'Neko-Institute-of-Science/LLaMA-7B-HF'
+        self.base_model = 'Qwen/Qwen2.5-1.5B'
         self.lora_r = 8
         self.lora_alpha = 16
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
-        self.lora_target_modules = ["q_proj", "v_proj", ]
+        self.lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
         assert (
             self.base_model
@@ -65,12 +56,12 @@ class LLMAgent(nn.Module):
 
         self.normalization_mode = normalization_mode
 
-        self.tokenizer = LlamaTokenizer.from_pretrained(self.base_model)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
         self.tokenizer.pad_token_id = (
             0  # unk. we want this to be different from the eos token
         )
 
-        self.llama = self._init_llama()
+        self.llm = self._init_llm()
 
         if load_path:
             self.load(load_path)
@@ -78,19 +69,19 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor().to(self.device)
             self.critic = self._init_critic().to(self.device)
 
-    def _init_llama(self):
-        model = LlamaForCausalLM.from_pretrained(
+    def _init_llm(self):
+        model = AutoModelForCausalLM.from_pretrained(
             self.base_model,
             torch_dtype=torch.float16,
             load_in_8bit=self.load_8bit,
             device_map="auto",
-            cache_dir=os.path.join(root, 'weights/llama')
+            cache_dir=os.path.join(root, f'weights/{self.base_model}')
         )
 
         if not self.load_8bit:
             model.half().to(self.device)
         else:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=True)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
@@ -102,9 +93,9 @@ class LLMAgent(nn.Module):
                 target_modules=self.lora_target_modules,
                 lora_dropout=self.lora_dropout,
                 bias="none",
-                task_type="CAUSAL_LM",
+                task_type=TaskType.CAUSAL_LM,
             )
-            model = get_peft_model(self.llama, config)
+            model = get_peft_model(self.llm, config)
 
             model.print_trainable_parameters()
 
@@ -116,7 +107,7 @@ class LLMAgent(nn.Module):
             ).__get__(model, type(model))
         else:
             model = PeftModel.from_pretrained(
-                self.llama,
+                self.llm,
                 lora_weights,
                 torch_dtype=torch.float16,
             )
@@ -127,7 +118,7 @@ class LLMAgent(nn.Module):
         if not self.load_8bit:
             model.half()
         else:
-            model = prepare_model_for_int8_training(model, use_gradient_checkpointing=True)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
@@ -155,9 +146,6 @@ class LLMAgent(nn.Module):
         # self.critic = self._init_critic(critic_weights).to(self.device)
 
     def get_value(self, x):
-        if type(x) != list:
-            x = [self.obs2text(o)["prompt"] for o in x]
-
         inputs = self.tokenizer(x, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(self.device)
         attention_mask = inputs["attention_mask"].to(self.device)
@@ -166,12 +154,10 @@ class LLMAgent(nn.Module):
             value = self.critic(input_ids, attention_mask=attention_mask)
         return value
 
-    def get_action_and_value(self, obs, action=None, is_warmup=False, return_value=True):
-        text_obs = [self.obs2text(o) for o in obs]
+    def get_action_and_value(self, text_obs, action=None, is_warmup=False, return_value=True):
         prompt = [o["prompt"] for o in text_obs]
 
         action_list = [o["action"] for o in text_obs]
-        action_ids = [[self.template2action[item] for item in env] for env in action_list]
 
         prompt_nums = len(prompt)
         action_nums = [len(item) for item in action_list]
@@ -231,12 +217,11 @@ class LLMAgent(nn.Module):
             if action is None:
                 cur_action = probs.sample()[0]
                 cur_action = cur_action.view(-1)
-                real_action = torch.tensor([action_ids[i][cur_action.item()]], dtype=torch.int32).to(self.device)
-            else:
-                real_action = action[i].view(-1)
-                cur_action = torch.tensor([action_ids[i].index(real_action.item())], dtype=torch.int32).to(self.device)
 
-            actions.append(real_action)
+            else:
+                cur_action = action
+
+            actions.append(cur_action)
             log_probs.append(probs.log_prob(cur_action))
             entroy.append(probs.entropy())
 
@@ -249,121 +234,72 @@ class LLMAgent(nn.Module):
         else:
             return action, log_probs, entroy, None
 
-    # TODO: Rewrite this function to use our prompts
-    def obs2text(self, obs):
-        text = ""
+    # Normally generate texts
+    def generate_text(self, prompt, max_new_tokens=30, temperature=1.0, top_p=0.9, do_sample=True):
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
 
-        # 假设 obs 中的索引和字段如下对应（你可以根据需要调整这些索引）
-        clickable = obs[0]
-        scrollable = obs[1]
-        checkable = obs[2]
-        long_clickable = obs[3]
-        editable = obs[4]
-        rotatable = obs[5]
-        searchable = obs[6]
-        swipeable = obs[7]
+        # Generate text using the model's generate method
+        with torch.no_grad():
+            outputs = self.actor.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
+
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        return generated_text
 
 
+## Note that the following code is modified from
+## https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/training/utils/model/reward_model.py
+class Critic(nn.Module):
 
+    def __init__(self, base_model, tokenizer, num_padding_at_beginning=0):
+        super().__init__()
+        self.config = base_model.config
+        self.num_padding_at_beginning = num_padding_at_beginning
+        # `OPT` models use word_embed_proj_dim as final output
+        # https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py#L497
+        # `gpt-neo(x)` models use `hidden_size` attribute names instead of `n_embd``
+        self.config.n_embd = self.config.hidden_size if hasattr(
+             self.config, "hidden_size") else self.config.word_embed_proj_dim if hasattr(
+             self.config, "word_embed_proj_dim") else self.config.n_embd
+        self.v_head_mlp1 = nn.Linear(self.config.n_embd, 1024, bias=False)
+        self.v_head_mlp2 = nn.Linear(1024, 512, bias=False)
+        self.v_head_mlp3 = nn.Linear(512, 1, bias=False)
+        self.relu = nn.ReLU()
+        self.rwtranrsformer = base_model
+        self.PAD_ID = tokenizer.pad_token_id
 
-        actionable = clickable or scrollable or checkable or long_clickable or editable or searchable or swipeable
+    def gradient_checkpointing_enable(self):
+        self.rwtranrsformer.gradient_checkpointing_enable()
 
-        object_text = ""
-        action_list = []
+    def gradient_checkpointing_disable(self):
+        self.rwtranrsformer.gradient_checkpointing_disable()
 
-        if actionable:
-            action_phrases = []
-            action_phrases.append("press any key")
-            action_list.append(8)
+    def forward(self,
+                      input_ids=None,
+                      attention_mask=None,
+                      past_key_values=None,
+                      head_mask=None,
+                      inputs_embeds=None,
+                      use_cache=False):
+        with torch.no_grad():
+            transformer_outputs = self.rwtranrsformer(
+                input_ids,
+                past_key_values=past_key_values,
+                attention_mask=attention_mask,
+                use_cache=use_cache,
+                output_hidden_states=True)
 
-            if editable:
-                action_phrases.append("edit the screen")
-                action_list.append(0)
-            if searchable:
-                action_phrases.append("search the screen")
-                action_list.append(16)
-            if editable and searchable:
-                action_phrases.append("edit the screen and search the screen")
-                action_list.append(17)
+        hidden_states = transformer_outputs[1][-1][:, -1, :].float()
 
-            if clickable :
-                action_phrases.append("click on the screen")
-                action_list.append(1)
-                action_list.append(2)
-            if swipeable:
-                action_phrases.append("swipe the screen")
-                action_list.append(3)
-
-            if scrollable:
-                action_phrases.append("scroll the screen up or down")
-                action_list.append(4)
-                action_list.append(5)
-                action_list.append(6)
-                action_list.append(7)
-            if rotatable:
-                action_phrases.append("rotate the screen")
-                action_list.append(12)
-                action_list.append(13)
-
-            object_text = "You can " + ", ".join(action_phrases) + "."
-
-        else:
-            action_phrases = []
-            object_text = "There are no available interactions on the screen at the moment."
-            action_phrases.append("spawn a new event")
-            action_list.append(10)  # 对应 "spawn event"
-
-            action_phrases.append("kill the app")
-            action_list.append(11)  # 对应 "kill app event"
-
-            action_phrases.append("fresh reinstall the app")
-            action_list.append(14)  # 对应 "fresh reinstall app"
-
-            action_phrases.append("kill and restart the app")
-            action_list.append(15)  # 对应 "kill and restart app"
-
-            action_phrases.append("exit the app")
-            action_list.append(18)
-
-            object_text = "But you can " + ", ".join(action_phrases) + "."
-
-        text += object_text
-
-        # template for target
-        target_template = " In order to complete your goal, "
-        text += target_template
-
-        # template for next step
-        next_step_text = "your next step is to..."
-        text += next_step_text
-
-        self.action_template = [
-            "edit",  # 对应 SetTextEvent 0
-            "click",  # 对应 TouchEvent 1
-            "long click",  # 对应 LongTouchEvent 2
-            "swipe",  # 对应 SwipeEvent 3
-            "scroll up",  # 对应 ScrollEvent，方向为 UP 4
-            "scroll down",  # 对应 ScrollEvent，方向为 DOWN 5
-            "scroll left",  # 对应 ScrollEvent，方向为 LEFT 6
-            "scroll right",  # 对应 ScrollEvent，方向为 RIGHT 7
-            "key event",  # 对应 KeyEvent 8
-            "intent event",  # 对应 IntentEvent 9
-            "spawn event",  # 对应 SpawnEvent 10
-            "kill app event",  # 对应 KillAppEvent 11
-            "rotate device to landscape",  # 对应 RotateDeviceToLandscapeEvent 12
-            "rotate device to portrait",  # 对应 RotateDeviceToPortraitEvent 13
-            "fresh reinstall app",  # 对应 ReInstallAppEvent 14
-            "kill and restart app",  # 对应 KillAndRestartAppEvent 15
-            "search",  # 对应 SearchEvent 16
-            "set text and search",  # 对应 SetTextAndSearchEvent 17
-            "exit",  # 对应 ExitEvent 18
-        ]
-
-        self.template2action = {
-            k: i for i, k in enumerate(self.action_template)
-        }
-
-        actions = [self.action_template[i] for i in action_list]
-
-        return {"prompt": text, "action": actions}
-
+        x = self.relu(self.v_head_mlp1(hidden_states))
+        x = self.relu(self.v_head_mlp2(x))
+        values = self.v_head_mlp3(x).squeeze(-1)
+        return values
