@@ -839,19 +839,31 @@ class LLMPolicy(RandomPolicy):
 
         task_prompt = (
                 self.task
-                + f"Currently, the App is stuck on the {activity} page, unable to explore more features. You task is to select an action based on the current GUI Infomation to perform next and help the app escape the UI tarpit."
+                + f"Currently, the App is running on the {activity} page. My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."
         )
+
         visited_page_prompt = (
                 f"I have already visited the following activities: \n"
                 + "\n".join(activity_history)
         )
+
         history_prompt = (
                 f"I have already completed the following steps to leave {activity} page but failed: \n "
                 + ";\n ".join(action_history)
         )
-        state_prompt, candidate_actions = current_state.get_described_actions()
-        question = "Which action should I choose next? Just return the action id and nothing else.\nIf no more action is needed, return -1."
-        system_message_content = f"{task_prompt}\n{state_prompt}\n{visited_page_prompt}\n{history_prompt}\n{question}\n{docs_content}"
+
+        state_prompt, _ = current_state.get_described_actions()
+        candidate_actions = current_state.get_possible_input()
+        candidate_actions.append(KeyEvent(name="BACK"))
+        if not self.disable_rotate:
+            candidate_actions.append(RotateDevice())
+        actions_prompt = (
+                f"Here are the actions I can take: \n"
+                + "\n".join(f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions))
+        )
+
+        question = "Which action should I choose next? I shall choose No. "
+        system_message_content = f"{task_prompt}\n{docs_content}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
 
         conversation_messages = [
             message for message in state["messages"]
@@ -867,7 +879,7 @@ class LLMPolicy(RandomPolicy):
         selected_action = candidate_actions[idx]
         if isinstance(selected_action, SetTextEvent):
             view_text = current_state.get_view_desc(selected_action.view)
-            question = f"What text should I enter to the {view_text}? Just return the text and nothing else."
+            question = f"What text should I enter to the {view_text}? It shall be:\n"
             prompt = f"{task_prompt}\n{state_prompt}\n{question}"
             print(prompt)
             response = self.llm.invoke(prompt)
