@@ -387,4 +387,3 @@ class UTG(object):
             if node_state_str == state_str:
                 return self.G.nodes[node_state_str]["state"].structure_str
         return None
-

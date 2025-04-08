@@ -724,7 +724,16 @@ class Device(object):
         if "Success" not in r.split():
             self.logger.error(f"Fail to install apk. ADB output:\n{r}")
             self.disconnect()
-        
+
+
+        self.logger.info("Please wait while installing the app...")
+
+        r = self.adb.run_cmd(install_cmd)
+
+        if "Success" not in r.split():
+            self.logger.error(f"Fail to install apk. ADB output:\n{r}")
+            self.disconnect()
+
         if package_name not in self.adb.get_installed_apps():
             self.logger.warning(f"Package name not in device's package list. Which may lead to unexpected behaivour.")
 

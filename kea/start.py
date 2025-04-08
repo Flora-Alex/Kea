@@ -1,10 +1,13 @@
 import argparse
 import os
 import warnings
+from dataclasses import dataclass
 
 from hypothesis.errors import NonInteractiveExampleWarning
+
 warnings.filterwarnings("ignore", category=NonInteractiveExampleWarning)
 import coloredlogs
+
 coloredlogs.install()
 
 from .input_manager import DEFAULT_POLICY, DEFAULT_TIMEOUT
@@ -12,6 +15,42 @@ from .kea import Kea
 from .utils import get_yml_config, sanitize_args, load_properties_from_dir
 from .droidbot import DroidBot
 from .utils import DEFAULT_POLICY, DEFAULT_EVENT_INTERVAL, DEFAULT_TIMEOUT, DEFAULT_EVENT_COUNT
+
+
+@dataclass
+class Setting:
+    """`Setting` is a Python DataClass
+
+    TODO: it seems the Setting class is redudant? why not just using options?
+    """
+    apk_path: str
+    device_serial: str = None
+    output_dir: str = "output"
+    is_emulator: bool = True  # True for emulators, False for real devices.
+    policy_name: str = DEFAULT_POLICY
+    random_input: bool = True
+    event_interval: int = DEFAULT_EVENT_INTERVAL
+    timeout: int = DEFAULT_TIMEOUT
+    event_count: int = DEFAULT_EVENT_COUNT
+    cv_mode = None
+    debug_mode: bool = False
+    keep_app: bool = None
+    keep_env = None
+    profiling_method = None
+    grant_perm: bool = True
+    send_document: bool = True
+    enable_accessibility_hard = None
+    master = None
+    humanoid = None
+    ignore_ad = None
+    replay_output = None
+    number_of_events_that_restart_app: int = 100
+    run_initial_rules_after_every_mutation = True
+    is_harmonyos: bool = False
+    generate_utg: bool = False
+    is_package: bool = False
+    disable_rotate: bool = False
+
 
 def parse_args():
     """Parse, load and sanitize the args from the command line and the config file `config.yml`.
@@ -21,18 +60,20 @@ def parse_args():
     """
     parser = argparse.ArgumentParser(description="Start kea to test app.",
                                      formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("-f", nargs="+", action="store",dest="property_files", help="The app properties to be tested.")
+    parser.add_argument("-f", nargs="+", action="store", dest="property_files", help="The app properties to be tested.")
     parser.add_argument("-d", "--device_serial", action="store", dest="device_serial", default=None,
                         help="The serial number of target device (use `adb devices` to find)")
-    parser.add_argument("-a","--apk", action="store", dest="apk_path",
+    parser.add_argument("-a", "--apk", action="store", dest="apk_path",
                         help="The file path to target APK")
-    parser.add_argument("-o","--output", action="store", dest="output_dir", default="output",
+    parser.add_argument("-o", "--output", action="store", dest="output_dir", default="output",
                         help="directory of output")
-    parser.add_argument("-p","--policy", action="store", dest="policy",choices=["random", "guided", "llm"], default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
+    parser.add_argument("-p", "--policy", action="store", dest="policy", choices=["random", "guided", "llm"],
+                        default=DEFAULT_POLICY,  # tingsu: can we change "mutate" to "guided"?
                         help='Policy used for input event generation. ')
     parser.add_argument("-t", "--timeout", action="store", dest="timeout", default=DEFAULT_TIMEOUT, type=int,
                         help="Timeout in seconds. Default: %d" % DEFAULT_TIMEOUT)
-    parser.add_argument("-n","--number_of_events_that_restart_app", action="store", dest="number_of_events_that_restart_app", default=100, type=int,
+    parser.add_argument("-n", "--number_of_events_that_restart_app", action="store",
+                        dest="number_of_events_that_restart_app", default=100, type=int,
                         help="Restart the app when this number of events has been executed. Default: 100")
     parser.add_argument("-debug", action="store_true", dest="debug_mode",
                         help="Run in debug mode (dump debug messages).")
@@ -40,7 +81,7 @@ def parse_args():
                         help="Keep the app on the device after testing.")
     parser.add_argument("-grant_perm", action="store_true", dest="grant_perm",
                         help="Grant all permissions while installing. Useful for Android 6.0+.")
-    parser.add_argument("-is_emulator", action="store_true", dest="is_emulator",default=True,
+    parser.add_argument("-is_emulator", action="store_true", dest="is_emulator", default=True,
                         help="Declare the target device to be an emulator, which would be treated specially.")
     parser.add_argument("-is_harmonyos", action="store_true", dest="is_harmonyos", default=False,
                         help="use harmonyos devices")
@@ -55,92 +96,93 @@ def parse_args():
     # load the args from the config file `config.yml`
     if options.load_config:
         options = load_ymal_args(options)
-
-    defaults = {
-        "random_input": True,
-        "event_interval": DEFAULT_EVENT_INTERVAL,
-        "event_count": DEFAULT_EVENT_COUNT,
-        "cv_mode": None,
-        "keep_env": None,
-        "profiling_method": None,
-        "send_document": True,
-        "enable_accessibility_hard": None,
-        "master": None,
-        "humanoid": None,
-        "ignore_ad": None,
-        "replay_output": None,
-        "run_initial_rules_after_every_mutation": True,
-        "is_package": False
-    }
-
-    for key, value in defaults.items():
-        if not hasattr(options, key):
-            setattr(options, key, value)
-
     options.property_files = load_properties_from_dir(options.property_files)
 
     # sanitize these args
     sanitize_args(options)
     return options
 
+
 def load_ymal_args(opts):
-    """Load the args from the config file `config.yml`. 
+    """Load the args from the config file `config.yml`.
 
     The design purpose of config.yml is to ease specifying the args via a config file.
     Note that the values of the args in config.yml would overwrite those args specified via the command line.
     """
     config_dict = get_yml_config()
     for key, value in config_dict.items():
-        setattr(opts, key.lower(), value)
+        if key.lower() == "system" and value:
+            opts.is_harmonyos = value.lower() == "harmonyos"
+        elif key.lower() in ["app_path", "package", "package_name"] and value:
+            opts.apk_path = value
+        elif key.lower() == "policy" and value:
+            opts.policy = value
+        elif key.lower() == "output_dir" and value:
+            opts.output_dir = value
+        elif key.lower() == "count" and value:
+            opts.count = value
+        elif key.lower() in ["target", "device", "device_serial"] and value:
+            opts.device_serial = value
+        elif key.lower() in ["property", "properties", "file", "files"] and value:
+            opts.property_files = value
+        elif key.lower() == "keep_app" and value:
+            opts.keep_app = value
+        elif key.lower() == "disable_rotate" and value:
+            opts.disable_rotate = value
+
     return opts
-def load_pdl_driver(options):
+
+
+def load_pdl_driver(settings: "Setting"):
     """Load the pdl (property description language) driver according to the target mobile platform
         (e.g., Android, HarmonyOS).
     """
-    if options.is_harmonyos:
+    if settings.is_harmonyos:
         from kea.harmonyos_pdl_driver import HarmonyOS_PDL_Driver
-        return HarmonyOS_PDL_Driver(serial=options.device_serial)
+        return HarmonyOS_PDL_Driver(serial=settings.device_serial)
     else:
         from kea.android_pdl_driver import Android_PDL_Driver
-        return Android_PDL_Driver(serial=options.device_serial)
-def start_kea(kea, options):
+        return Android_PDL_Driver(serial=settings.device_serial)
+
+
+def start_kea(kea: "Kea", settings: "Setting" = None):
     # droidbot is used as the data generator of Kea
     droidbot = DroidBot(
-        app_path=options.apk_path,
-        device_serial=options.device_serial,
-        is_emulator=options.is_emulator,
-        output_dir=options.output_dir,
-        env_policy = None,
-        policy_name=options.policy,
-        random_input=options.random_input,
-        event_interval=options.event_interval,
-        timeout=options.timeout,
-        event_count=options.event_count,
-        cv_mode=options.cv_mode,
-        debug_mode=options.debug_mode,
-        keep_app=options.keep_app,
-        keep_env=options.keep_env,
-        profiling_method=options.profiling_method,
-        grant_perm=options.grant_perm,
-        send_document=options.send_document,
-        enable_accessibility_hard=options.enable_accessibility_hard,
-        master=options.master,
-        humanoid=options.humanoid,
-        ignore_ad=options.ignore_ad,
-        replay_output=options.replay_output,
+        app_path=settings.apk_path,
+        device_serial=settings.device_serial,
+        is_emulator=settings.is_emulator,
+        output_dir=settings.output_dir,
+        env_policy=None,
+        policy_name=settings.policy_name,
+        random_input=settings.random_input,
+        event_interval=settings.event_interval,
+        timeout=settings.timeout,
+        event_count=settings.event_count,
+        cv_mode=settings.cv_mode,
+        debug_mode=settings.debug_mode,
+        keep_app=settings.keep_app,
+        keep_env=settings.keep_env,
+        profiling_method=settings.profiling_method,
+        grant_perm=settings.grant_perm,
+        send_document=settings.send_document,
+        enable_accessibility_hard=settings.enable_accessibility_hard,
+        master=settings.master,
+        humanoid=settings.humanoid,
+        ignore_ad=settings.ignore_ad,
+        replay_output=settings.replay_output,
         kea=kea,
-        number_of_events_that_restart_app=options.number_of_events_that_restart_app,
-        run_initial_rules_after_every_mutation=options.run_initial_rules_after_every_mutation,
-        is_harmonyos=options.is_harmonyos,
-        is_package=options.is_package,
-        settings=options,
-        generate_utg=options.generate_utg,
-        disable_rotate=options.disable_rotate,
+        number_of_events_that_restart_app=settings.number_of_events_that_restart_app,
+        run_initial_rules_after_every_mutation=settings.run_initial_rules_after_every_mutation,
+        is_harmonyos=settings.is_harmonyos,
+        is_package=settings.is_package,
+        settings=settings,
+        generate_utg=settings.generate_utg,
+        disable_rotate=settings.disable_rotate
     )
 
     kea._pdl_driver.set_droidbot(droidbot)
     droidbot.start()
-    
+
 
 def main():
     """the main entry of Kea.
@@ -148,17 +190,36 @@ def main():
     # parse the args
     options = parse_args()
 
+    # setup the setting
+    settings = Setting(apk_path=options.apk_path,
+                       device_serial=options.device_serial,
+                       output_dir=options.output_dir,
+                       timeout=options.timeout,
+                       policy_name=options.policy,
+                       number_of_events_that_restart_app=options.number_of_events_that_restart_app,
+                       # tingsu: do we need a better name?
+                       debug_mode=options.debug_mode,
+                       keep_app=options.keep_app,
+                       is_harmonyos=options.is_harmonyos,
+                       grant_perm=options.grant_perm,
+                       is_emulator=options.is_emulator,
+                       generate_utg=options.generate_utg,
+                       is_package=options.is_package,
+                       disable_rotate=options.disable_rotate
+                       )
+
     # load the pdl driver for Android/HarmonyOS
-    driver = load_pdl_driver(options)
+    driver = load_pdl_driver(settings)
     Kea.set_pdl_driver(driver)
     # load the app properties to be tested
     Kea.load_app_properties(options.property_files)
 
     # create Kea
     kea = Kea()
-    print(f"INFO: All Test cases: {kea._KeaTest_DB}") 
+    print(f"INFO: All Test cases: {kea._KeaTest_DB}")
     # start Kea
-    start_kea(kea, options)
+    start_kea(kea, settings)
+
 
 if __name__ == "__main__":
     main()

@@ -244,6 +244,8 @@ class DroidBot(object):
                 return
             self.device.send_documents(self.app)
             self.device.install_app(self.app)
+            if not self.is_package:
+                self.device.install_app(self.app)
 
             if not self.enabled:
                 return

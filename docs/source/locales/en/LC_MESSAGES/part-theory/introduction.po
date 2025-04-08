@@ -3,7 +3,10 @@
 # This file is distributed under the same license as the Kea package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
+<<<<<<< HEAD
 #, fuzzy
+=======
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
 msgid ""
 msgstr ""
 "Project-Id-Version: Kea 1.0\n"

@@ -132,11 +132,19 @@ Kea 给用户提供 ``@initializer()`` 帮助用户定义初始化函数，让�
 
 .. code:: Python
     
+<<<<<<< HEAD
     from kea.main import *
 
     class Test(KeaTest):
 
         @initialize()
+=======
+    from kea import *
+
+    class Test(KeaTest):
+
+        @initializer()
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
         def set_up(self):
             for _ in range(5):
                 d(resourceId="it.feio.android.omninotes:id/next").click()

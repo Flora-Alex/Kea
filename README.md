@@ -85,6 +85,11 @@ pip install -e .
 kea -f example/example_property.py -a example/omninotes.apk
 ```
 
+<<<<<<< HEAD
+=======
+**Note:** The LLM module is currently in an experimental phase. We are actively gathering feedback to improve its functionality and stability. We appreciate your understanding and support from the community, and we welcome any suggestions or comments.
+
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
 ### Contributors/Maintainers
 
 The original authors of Kea are:
@@ -98,7 +103,11 @@ The original authors of Kea are:
 Now we have additional active contributors:
 [Xiangchen Shen](https://xiangchenshen.github.io/), 
 [Xixian Liang](https://xixianliang.github.io/resume/),
+<<<<<<< HEAD
 [Mengqian Xu]()
+=======
+[Mengqian Xu](https://mengqianx.github.io/)
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
 
 ### Relevant Tools Used in Kea
 
@@ -127,6 +136,11 @@ Now we have additional active contributors:
 
 > 📘 Understanding and Finding System Setting-related Defects in Android Apps. ISSTA 2021. [pdf](https://dl.acm.org/doi/10.1145/3460319.3464806)
 
+<<<<<<< HEAD
+=======
+> 📘 Fully Automated Functional Fuzzing of Android Apps for Detecting Non-Crashing Logic Bugs. OOPSLA 2021. [pdf](https://dl.acm.org/doi/10.1145/3485533)
+
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
 </details>
 
 <details>
@@ -138,4 +152,8 @@ Now we have additional active contributors:
 
 📘 Property-based testing: a new approach to testing for assurance. Software Engineering Notes 1997. [pdf](https://dl.acm.org/doi/pdf/10.1145/263244.263267)
 
+<<<<<<< HEAD
 </details>
+=======
+</details>
+>>>>>>> d9dcf3b4af3f201133788fdda98f295a357065c8
