@@ -1,7 +1,5 @@
 import sys
 
-import fire
-import gradio as gr
 import torch
 import transformers
 from peft import (
@@ -14,7 +12,6 @@ from peft import (
 from transformers import LlamaForCausalLM, LlamaTokenizer
 from peft import PeftModel
 
-import torch.nn.functional as F
 import os
 import torch.nn as nn
 import numpy as np

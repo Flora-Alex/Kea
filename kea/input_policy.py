@@ -877,7 +877,7 @@ class LLMPolicy(RandomPolicy):
                 selected_action.text = ""
         return selected_action, candidate_actions
 
-    def generate_llm_event(self):
+    def generate_event(self):
         """
         generate an LLM event
         @return:
