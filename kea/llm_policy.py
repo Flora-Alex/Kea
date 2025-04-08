@@ -9,8 +9,8 @@ from peft import (
     prepare_model_for_kbit_training,
     set_peft_model_state_dict,
 )
-from transformers import LlamaForCausalLM, LlamaTokenizer
-from peft import PeftModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from peft import PeftModel, TaskType
 
 import os
 import torch.nn as nn
@@ -19,12 +19,7 @@ import numpy as np
 from torch.distributions.categorical import Categorical
 import copy
 
-root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(root)
-
-sys.path.append(
-    os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
-
+root = os.path.dirname(os.path.abspath(__file__))
 
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
@@ -37,12 +32,12 @@ class LLMAgent(nn.Module):
         super().__init__()
 
         self.load_8bit = load_8bit
-        self.base_model = 'Neko-Institute-of-Science/LLaMA-7B-HF'
+        self.base_model = 'Qwen/Qwen2.5-1.5B'
         self.lora_r = 8
         self.lora_alpha = 16
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
-        self.lora_target_modules = ["q_proj", "v_proj", ]
+        self.lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
         assert (
             self.base_model
@@ -61,12 +56,12 @@ class LLMAgent(nn.Module):
 
         self.normalization_mode = normalization_mode
 
-        self.tokenizer = LlamaTokenizer.from_pretrained(self.base_model)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.base_model)
         self.tokenizer.pad_token_id = (
             0  # unk. we want this to be different from the eos token
         )
 
-        self.llama = self._init_llama()
+        self.llm = self._init_llm()
 
         if load_path:
             self.load(load_path)
@@ -74,13 +69,13 @@ class LLMAgent(nn.Module):
             self.actor = self._init_actor().to(self.device)
             self.critic = self._init_critic().to(self.device)
 
-    def _init_llama(self):
-        model = LlamaForCausalLM.from_pretrained(
+    def _init_llm(self):
+        model = AutoModelForCausalLM.from_pretrained(
             self.base_model,
             torch_dtype=torch.float16,
             load_in_8bit=self.load_8bit,
             device_map="auto",
-            cache_dir=os.path.join(root, 'weights/llama')
+            cache_dir=os.path.join(root, f'weights/{self.base_model}')
         )
 
         if not self.load_8bit:
@@ -98,9 +93,9 @@ class LLMAgent(nn.Module):
                 target_modules=self.lora_target_modules,
                 lora_dropout=self.lora_dropout,
                 bias="none",
-                task_type="CAUSAL_LM",
+                task_type=TaskType.CAUSAL_LM,
             )
-            model = get_peft_model(self.llama, config)
+            model = get_peft_model(self.llm, config)
 
             model.print_trainable_parameters()
 
@@ -112,7 +107,7 @@ class LLMAgent(nn.Module):
             ).__get__(model, type(model))
         else:
             model = PeftModel.from_pretrained(
-                self.llama,
+                self.llm,
                 lora_weights,
                 torch_dtype=torch.float16,
             )
