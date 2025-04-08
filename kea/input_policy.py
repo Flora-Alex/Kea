@@ -776,7 +776,8 @@ class LLMPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
-            output_dir=None
+            output_dir=None,
+            inference=True
     ):
         super(LLMPolicy, self).__init__(device, app, kea)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -792,6 +793,9 @@ class LLMPolicy(RandomPolicy):
         if not os.environ.get("OPENAI_API_KEY"):
             os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
+        if inference:
+            self.llm.actor.eval()
+            self.llm.actor.eval()
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
         self.vector_store = InMemoryVectorStore(self.embeddings)
 
@@ -816,17 +820,7 @@ class LLMPolicy(RandomPolicy):
         )
         return serialized, retrieved_docs
 
-    # Step 1: Generate an AIMessage that may include a tool-call to be sent.
-    def query_or_respond(self, state: MessagesState):
-        """
-        Generate tool call for retrieval or respond.
-        """
-        llm_with_tools = self.llm.bind_tools([self.retrieve])
-        response = llm_with_tools.invoke(state["messages"])
-        # MessagesState appends messages to state instead of overwriting
-        return {"messages": [response]}
-
-    # Step 3: Generate a response using the retrieved content.
+    # Generate a response using the retrieved content.
     def _get_action_with_LLM(self, state: MessagesState, current_state, action_history, activity_history):
         """
         Generate answer.
@@ -859,34 +853,26 @@ class LLMPolicy(RandomPolicy):
         candidate_actions.append(KeyEvent(name="BACK"))
         if not self.disable_rotate:
             candidate_actions.append(RotateDevice())
+
+        actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
         actions_prompt = (
                 f"Here are the actions I can take: \n"
-                + "\n".join(f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions))
+                + "\n".join(actions)
         )
 
         question = "Which action should I choose next? I shall choose No. "
         system_message_content = f"{task_prompt}\n{docs_content}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
 
-        conversation_messages = [
-            message for message in state["messages"]
-            if message.type in ("human", "system") or (message.type == "ai" and not message.tool_calls)
-        ]
-        prompt = [SystemMessage(system_message_content)] + conversation_messages
-        response = self.llm.invoke(prompt)
 
-        match = re.search(r"\d+", response)
-        if not match:
-            return None, candidate_actions
-        idx = int(match.group(0))
+        obs = {"prompt": system_message_content, "action": actions}
+        idx= self.llm.get_action_and_value(obs, return_value= False)[0].cpu().numpy()
         selected_action = candidate_actions[idx]
+
         if isinstance(selected_action, SetTextEvent):
             view_text = current_state.get_view_desc(selected_action.view)
-            question = f"What text should I enter to the {view_text}? It shall be:\n"
-            prompt = f"{task_prompt}\n{state_prompt}\n{question}"
-            print(prompt)
-            response = self.llm.invoke(prompt)
-            print(f"response: {response}")
-            selected_action.text = response.replace('"', "")
+            question = f"What text should I enter to the {view_text} at maximum 30 chars? It shall be:\n"
+            prompt = f"{state_prompt}{actions[idx]}\n{question}"
+            generated_text = self.llm.generate_text(prompt)
             if len(selected_action.text) > 30:  # heuristically disable long text input
                 selected_action.text = ""
         return selected_action, candidate_actions

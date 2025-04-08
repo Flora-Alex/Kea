@@ -81,7 +81,7 @@ class LLMAgent(nn.Module):
         if not self.load_8bit:
             model.half().to(self.device)
         else:
-            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True,)
+            model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
 
         return model
 
@@ -154,29 +154,37 @@ class LLMAgent(nn.Module):
             value = self.critic(input_ids, attention_mask=attention_mask)
         return value
 
-    def get_action_and_value(self, prompt, action_list, action=None, is_warmup=False, return_value=True):
-        prompt_num = len(prompt)
-        action_num = len(action_list)
+    def get_action_and_value(self, text_obs, action=None, is_warmup=False, return_value=True):
+        prompt = [o["prompt"] for o in text_obs]
 
-        sequence = [f"{p} {a}" for p, a in zip(prompt, action_list)]
+        action_list = [o["action"] for o in text_obs]
+
+        prompt_nums = len(prompt)
+        action_nums = [len(item) for item in action_list]
+
+        sequence = []
+        for p, ac in zip(prompt, action_list):
+            sequence += [p + " " + a for a in ac]
 
         inputs = self.tokenizer(sequence, return_tensors="pt", padding=True)
         input_ids = inputs["input_ids"].to(self.device)
 
         attention_mask = inputs["attention_mask"].to(self.device)
+
         if is_warmup:
             with torch.no_grad():
                 outputs = self.actor(input_ids, attention_mask=attention_mask)
         else:
             outputs = self.actor(input_ids, attention_mask=attention_mask)
 
+        action_list = [item for sublist in action_list for item in sublist]
         self.action_list_ids = self.tokenizer(action_list, return_tensors="pt", padding=True)
 
         self.action_list_length = torch.sum(self.action_list_ids["attention_mask"], dim=-1) - 1  # delete first token
+
         sequence_length = torch.sum(attention_mask, dim=-1)
         action_index = [[end - start, end] for start, end in zip(self.action_list_length, sequence_length)]
 
-        # maybe no need to use it, directly use logits
         logits = torch.log_softmax(outputs.logits, dim=-1)
 
         logits = logits[:, :-1, :]
@@ -186,6 +194,7 @@ class LLMAgent(nn.Module):
         slices = [gen_logits[i, start - 1:end - 1] for i, (start, end) in enumerate(action_index)]
 
         action_logits = torch.stack([torch.sum(s) for s in slices])
+
         if self.normalization_mode == 'token':
             action_logits = action_logits / self.action_list_length.to(self.device)
         elif self.normalization_mode == 'word':
@@ -196,16 +205,54 @@ class LLMAgent(nn.Module):
         else:
             assert 1 == 2
 
-        action_logits = action_logits.reshape(-1, action_num).float()
+        actions = []
+        log_probs = []
+        entroy = []
 
-        probs = Categorical(logits=action_logits)
-        if action is None:
-            action = probs.sample()
+        for i in range(prompt_nums):
+            logits = action_logits[sum(action_nums[:i]):sum(action_nums[:i + 1])].reshape(-1, action_nums[i]).float()
+
+            probs = Categorical(logits=logits)
+
+            if action is None:
+                cur_action = probs.sample()[0]
+                cur_action = cur_action.view(-1)
+
+            else:
+                cur_action = action
+
+            actions.append(cur_action)
+            log_probs.append(probs.log_prob(cur_action))
+            entroy.append(probs.entropy())
+
+        action = torch.cat(actions)
+        log_probs = torch.cat(log_probs)
+        entroy = torch.cat(entroy)
 
         if return_value:
-            return action, probs.log_prob(action), probs.entropy(), self.get_value(prompt)
+            return action, log_probs, entroy, self.get_value(prompt)
         else:
-            return action, probs.log_prob(action), probs.entropy(), None
+            return action, log_probs, entroy, None
+
+    # Normally generate texts
+    def generate_text(self, prompt, max_new_tokens=30, temperature=1.0, top_p=0.9, do_sample=True):
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+
+        # Generate text using the model's generate method
+        with torch.no_grad():
+            outputs = self.actor.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                do_sample=do_sample,
+                pad_token_id=self.tokenizer.pad_token_id,
+                eos_token_id=self.tokenizer.eos_token_id
+            )
+
+        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+
+        return generated_text
 
 
 ## Note that the following code is modified from
