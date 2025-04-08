@@ -7,7 +7,7 @@ import time
 import numpy as np
 import torch
 from torch.utils.tensorboard import SummaryWriter
-from policy import LLMAgent
+from llm_policy import LLMAgent
 from ppo_env import EnvRunner
 
 
