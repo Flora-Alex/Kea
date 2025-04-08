@@ -404,6 +404,9 @@ class RandomPolicy(KeaInputPolicy):
         self.number_of_events_that_restart_app = number_of_events_that_restart_app
         self.clear_and_reinstall_app = clear_and_reinstall_app
         self.logger = logging.getLogger(self.__class__.__name__)
+        print(f"output_dir: {output_dir}")
+        if output_dir is None:
+            output_dir = "output"
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
         self.disable_rotate = disable_rotate
