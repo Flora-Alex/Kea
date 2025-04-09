@@ -777,8 +777,8 @@ class LLMPolicy(RandomPolicy):
         self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on my extensive App testing experience.")
 
-        if not os.environ.get("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
+        # if not os.environ.get("OPENAI_API_KEY"):
+        #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
         if inference:
             self.llm.actor.eval()
