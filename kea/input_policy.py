@@ -7,12 +7,14 @@ import getpass
 import bs4
 import time
 
-from langchain_core.vectorstores import InMemoryVectorStore
+from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import MessagesState
 from langchain_core.tools import tool
 from langchain_community.document_loaders import UnstructuredMarkdownLoader
 from langchain_core.documents import Document
+from langchain_chroma import Chroma
 
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
@@ -777,14 +779,13 @@ class LLMPolicy(RandomPolicy):
         self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on my extensive App testing experience.")
 
-        if not os.environ.get("OPENAI_API_KEY"):
-            os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
+        # if not os.environ.get("OPENAI_API_KEY"):
+        #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
         if inference:
             self.llm.actor.eval()
             self.llm.actor.eval()
-        self.embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
-        self.vector_store = InMemoryVectorStore(self.embeddings)
+        self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
         markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
         loader = UnstructuredMarkdownLoader(markdown_path)
@@ -792,8 +793,17 @@ class LLMPolicy(RandomPolicy):
         assert len(data) == 1
         assert isinstance(data[0], Document)
         readme_content = data[0].page_content
-        print(readme_content[:250])
-        self.task += f"\n\n{readme_content}"
+        api_start_index = readme_content.find("API Documents")
+        if api_start_index != -1:
+            api_content = readme_content[api_start_index:]
+        else:
+            api_content = ""
+            print("没有找到API Documents")
+        api_document = Document(page_content=api_content)
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+        all_splits = text_splitter.split_documents([api_document])
+
+        self.vectorstore = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -850,9 +860,8 @@ class LLMPolicy(RandomPolicy):
         question = "Which action should I choose next? I shall choose No. "
         system_message_content = f"{task_prompt}\n{docs_content}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
 
-
         obs = {"prompt": system_message_content, "action": actions}
-        idx= self.llm.get_action_and_value(obs, return_value= False)[0].cpu().numpy()
+        idx = self.llm.get_action_and_value(obs, return_value=False)[0].cpu().numpy()
         selected_action = candidate_actions[idx]
 
         if isinstance(selected_action, SetTextEvent):
