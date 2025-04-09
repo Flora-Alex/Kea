@@ -4,6 +4,13 @@ import random
 import copy
 import time
 
+from langchain_community.chat_message_histories import ChatMessageHistory
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import RunnableWithMessageHistory
 from langchain_ollama import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import MessagesState
@@ -782,27 +789,6 @@ class LLMPolicy(RandomPolicy):
             self.llm.actor.eval()
             self.llm.actor.eval()
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
-        """
-        markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
-        loader = UnstructuredMarkdownLoader(markdown_path)
-        data = loader.load()
-        assert len(data) == 1
-        assert isinstance(data[0], Document)
-        readme_content = data[0].page_content
-        api_start_index = readme_content.find("API Documents")
-        if api_start_index != -1:
-            api_content = readme_content[api_start_index:]
-        else:
-            api_content = ""
-            print("没有找到API Documents")
-        api_document = Document(page_content=api_content)
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
-        all_splits = text_splitter.split_documents([api_document])
-
-        self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
-        """
-        docs = [Document(page_content="ui testing")]
-        self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -817,24 +803,41 @@ class LLMPolicy(RandomPolicy):
         return serialized, retrieved_docs
 
     # Generate a response using the retrieved content.
-    def _get_action_with_LLM(self, state: MessagesState, current_state, action_history, activity_history):
+    def _get_action_with_LLM(self, current_state, action_history, activity_history):
         """
         Generate answer.
         """
+        """
+                markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
+                loader = UnstructuredMarkdownLoader(markdown_path)
+                data = loader.load()
+                assert len(data) == 1
+                assert isinstance(data[0], Document)
+                readme_content = data[0].page_content
+                api_start_index = readme_content.find("API Documents")
+                if api_start_index != -1:
+                    api_content = readme_content[api_start_index:]
+                else:
+                    api_content = ""
+                    print("没有找到API Documents")
+                api_document = Document(page_content=api_content)
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+                all_splits = text_splitter.split_documents([api_document])
+
+                self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+                """
+        docs = [Document(page_content="ui testing")]
+        self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
+        retriever = self.vector_store.as_retriever()
         activity = current_state.foreground_activity
-        action_history_text = "\n".join(action_history)
-        activity_history_text = "\n".join(activity_history)
-        # Get generated ToolMessages
-        recent_tool_messages = [message for message in reversed(state["messages"]) if message.type == "tool"]
-        tool_messages = recent_tool_messages[::-1]
-        docs_content = "\n\n".join(doc.content for doc in tool_messages)
 
         task_prompt = (
                 self.task
-                + f"Currently, the App is running on the {activity} page. My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."
+                + f"My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."
         )
 
         visited_page_prompt = (
+                f"Currently, the App is running on the {activity} page."
                 f"I have already visited the following activities: \n"
                 + "\n".join(activity_history)
         )
@@ -857,7 +860,50 @@ class LLMPolicy(RandomPolicy):
         )
 
         question = "Which action should I choose next? I shall choose No. "
-        system_message_content = f"{task_prompt}\n{docs_content}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
+        system_message_content = f"{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
+
+        contextualize_q_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", task_prompt),
+                MessagesPlaceholder("chat_history"),
+                ("human", "{input}"),
+            ]
+        )
+
+        history_aware_retriever = create_history_aware_retriever(
+            self.llm.llm, retriever, contextualize_q_prompt
+        )
+
+        qa_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", system_message_content),
+                MessagesPlaceholder("chat_history"),
+                ("human", "{input}"),
+            ]
+        )
+        question_answer_chain = create_stuff_documents_chain(self.llm.llm, qa_prompt)
+        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+        store = {}
+
+        def get_session_history(session_id: str) -> BaseChatMessageHistory:
+            if session_id not in store:
+                store[session_id] = ChatMessageHistory()
+            return store[session_id]
+
+        conversational_rag_chain = RunnableWithMessageHistory(
+            rag_chain,
+            get_session_history,
+            input_messages_key="input",
+            history_messages_key="chat_history",
+            output_messages_key="answer",
+        )
+
+        var = conversational_rag_chain.invoke(
+            {"input": "What is your solution to get away from the UI tarpit?"},
+            config={
+                "configurable": {"session_id": "a1"}
+            },  # constructs a key in `store`.
+        )["answer"]
 
         obs = {"prompt": system_message_content, "action": actions}
         idx = self.llm.get_action_and_value(obs, return_value=False)[0].cpu().numpy()
@@ -1002,7 +1048,6 @@ class LLMPolicy(RandomPolicy):
             self.__num_steps_outside = 0
 
         action, candidate_actions = self._get_action_with_LLM(
-            MessagesState,
             current_state,
             self.__action_history,
             self.__activity_history,
