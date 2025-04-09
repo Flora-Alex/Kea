@@ -801,6 +801,8 @@ class LLMPolicy(RandomPolicy):
 
         self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
         """
+        self.vector_store = Chroma.from_documents(documents=[], embedding=self.embeddings)
+
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
         """
@@ -999,6 +1001,7 @@ class LLMPolicy(RandomPolicy):
             self.__num_steps_outside = 0
 
         action, candidate_actions = self._get_action_with_LLM(
+            MessagesState,
             current_state,
             self.__action_history,
             self.__activity_history,
