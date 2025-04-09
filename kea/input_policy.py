@@ -37,7 +37,7 @@ from .utg import UTG
 from .kea import CHECK_RESULT
 from typing import TYPE_CHECKING, Dict
 
-from llm_policy import LLMAgent
+from .llm_policy import LLMAgent
 
 if TYPE_CHECKING:
     from .input_manager import InputManager
