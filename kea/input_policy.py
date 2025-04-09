@@ -860,7 +860,8 @@ class LLMPolicy(RandomPolicy):
         )
 
         question = "Which action should I choose next? I shall choose No. "
-        system_message_content = f"{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
+        system_message_content = f"{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"\
+                                 "{context}"
 
         contextualize_q_prompt = ChatPromptTemplate.from_messages(
             [
