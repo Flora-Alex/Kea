@@ -4,6 +4,8 @@ import random
 import copy
 import time
 
+from langchain_community.chat_models import HuggingFaceChat
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
@@ -829,8 +831,15 @@ class LLMPolicy(RandomPolicy):
         docs = [Document(page_content="ui testing")]
         self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
         retriever = self.vector_store.as_retriever()
-        activity = current_state.foreground_activity
 
+        model_name = "Qwen/Qwen2-0.5B"
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(model_name)
+        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
+        self.llm.llm = HuggingFaceChat(pipeline=pipe)
+
+        activity = current_state.foreground_activity
         task_prompt = (
                 self.task
                 + f"My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."

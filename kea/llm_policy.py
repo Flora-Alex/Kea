@@ -21,6 +21,7 @@ import copy
 
 root = os.path.dirname(os.path.abspath(__file__))
 
+
 def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     torch.nn.init.orthogonal_(layer.weight, std)
     torch.nn.init.constant_(layer.bias, bias_const)
@@ -267,8 +268,8 @@ class Critic(nn.Module):
         # https://github.com/huggingface/transformers/blob/main/src/transformers/models/opt/modeling_opt.py#L497
         # `gpt-neo(x)` models use `hidden_size` attribute names instead of `n_embd``
         self.config.n_embd = self.config.hidden_size if hasattr(
-             self.config, "hidden_size") else self.config.word_embed_proj_dim if hasattr(
-             self.config, "word_embed_proj_dim") else self.config.n_embd
+            self.config, "hidden_size") else self.config.word_embed_proj_dim if hasattr(
+            self.config, "word_embed_proj_dim") else self.config.n_embd
         self.v_head_mlp1 = nn.Linear(self.config.n_embd, 1024, bias=False)
         self.v_head_mlp2 = nn.Linear(1024, 512, bias=False)
         self.v_head_mlp3 = nn.Linear(512, 1, bias=False)
@@ -283,12 +284,12 @@ class Critic(nn.Module):
         self.rwtranrsformer.gradient_checkpointing_disable()
 
     def forward(self,
-                      input_ids=None,
-                      attention_mask=None,
-                      past_key_values=None,
-                      head_mask=None,
-                      inputs_embeds=None,
-                      use_cache=False):
+                input_ids=None,
+                attention_mask=None,
+                past_key_values=None,
+                head_mask=None,
+                inputs_embeds=None,
+                use_cache=False):
         with torch.no_grad():
             transformer_outputs = self.rwtranrsformer(
                 input_ids,
