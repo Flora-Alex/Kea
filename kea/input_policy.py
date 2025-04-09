@@ -801,7 +801,8 @@ class LLMPolicy(RandomPolicy):
 
         self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
         """
-        self.vector_store = Chroma.from_documents(documents=[], embedding=self.embeddings)
+        docs = [Document(page_content="ui testing")]
+        self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
