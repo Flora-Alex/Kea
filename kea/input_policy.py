@@ -4,7 +4,7 @@ import random
 import copy
 import time
 
-from langchain_community.chat_models import HuggingFaceChat
+from langchain_community.chat_models import ChatHuggingFace
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.chains.combine_documents import create_stuff_documents_chain
@@ -837,7 +837,7 @@ class LLMPolicy(RandomPolicy):
         tokenizer = AutoTokenizer.from_pretrained(model_name)
         model = AutoModelForCausalLM.from_pretrained(model_name)
         pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
-        self.llm.llm = HuggingFaceChat(pipeline=pipe)
+        self.llm.llm = ChatHuggingFace(pipeline=pipe)
 
         activity = current_state.foreground_activity
         task_prompt = (
