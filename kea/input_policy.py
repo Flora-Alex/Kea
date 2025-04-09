@@ -786,7 +786,7 @@ class LLMPolicy(RandomPolicy):
             self.llm.actor.eval()
             self.llm.actor.eval()
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
-
+        """
         markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
         loader = UnstructuredMarkdownLoader(markdown_path)
         data = loader.load()
@@ -804,7 +804,7 @@ class LLMPolicy(RandomPolicy):
         all_splits = text_splitter.split_documents([api_document])
 
         self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
-
+        """
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
         """
