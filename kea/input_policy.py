@@ -2,13 +2,9 @@ import os
 import logging
 import random
 import copy
-import re
-import getpass
-import bs4
 import time
 
 from langchain_ollama import OllamaEmbeddings
-from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import MessagesState
 from langchain_core.tools import tool
