@@ -803,7 +803,7 @@ class LLMPolicy(RandomPolicy):
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
         all_splits = text_splitter.split_documents([api_document])
 
-        self.vectorstore = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+        self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
