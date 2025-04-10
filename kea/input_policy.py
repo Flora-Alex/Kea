@@ -836,9 +836,12 @@ class LLMPolicy(RandomPolicy):
                 + "\n".join(activity_history)
         )
 
+        for i in range(len(action_history)):
+            if action_history[i] is None:
+                action_history[i] = "None"
         history_prompt = (
                 f"I have already completed the following steps to leave {activity} page but failed: \n "
-                + ";\n ".join(action_history if action_history is not None else ["No history found yet."])
+                + ";\n ".join(action_history if len(action_history) > 0 else ["None"])
         )
 
         state_prompt, _ = current_state.get_described_actions()
