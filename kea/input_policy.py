@@ -11,7 +11,7 @@ from langchain_ollama import OllamaEmbeddings
 from langchain_core.tools import tool
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
-from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
+# from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
 
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
@@ -783,6 +783,7 @@ class LLMPolicy(RandomPolicy):
         if inference:
             self.llm.actor.eval()
             self.llm.critic.eval()
+        self.inference = inference
         # self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
     @tool(response_format="content_and_artifact")
@@ -839,9 +840,9 @@ class LLMPolicy(RandomPolicy):
 
         for i in range(len(action_history)):
             if action_history[i] is None:
-                action_history[i] = "None"
+                action_history[i] = "- None"
         history_prompt = (
-                f"I have already completed the following steps to leave {activity} page but failed: \n "
+                f"I have already completed the following steps: \n "
                 + ";\n ".join(action_history if len(action_history) > 0 else ["None"])
         )
 
@@ -867,7 +868,7 @@ class LLMPolicy(RandomPolicy):
 
         obs = {"prompt": system_message_content, "action": actions}
         print(system_message_content)
-        actions_sampled = self.llm.get_action_and_value([obs], return_value=False, is_warmup=inference)[0].cpu().numpy()
+        actions_sampled = self.llm.get_action_and_value([obs], return_value=False, is_warmup=self.inference)[0].cpu().numpy()
         self.llm.clean()
         selected_action = candidate_actions[actions_sampled[0]]
 
@@ -887,21 +888,13 @@ class LLMPolicy(RandomPolicy):
         @return:
         """
 
-        current_state = self.from_state
-
-        # Return relevant events based on whether the application is in the foreground.
-        event = self.move_the_app_to_foreground_if_needed(current_state)
-        if event is not None:
-            return event
-
         if self.event_count == START_TO_GENERATE_EVENT_IN_POLICY or isinstance(
                 self.last_event, ReInstallAppEvent
         ):
             self.run_initializer()
             self.from_state = self.device.get_current_state()
+        current_state = self.from_state
         if current_state is None:
-            import time
-
             time.sleep(5)
             return KeyEvent(name="BACK")
 
@@ -925,7 +918,7 @@ class LLMPolicy(RandomPolicy):
             self.time_needed_to_satisfy_precondition.append(t)
             self.logger.debug(
                 "has rule that matches the precondition and the time duration is "
-                + self.time_recoder.get_time_duration()
+                + t
             )
             if random.random() < 0.5:
                 self.logger.info("Check property")
@@ -959,7 +952,10 @@ class LLMPolicy(RandomPolicy):
         @return: InputEvent
         """
         current_state = self.from_state
-        self.logger.info("Current state: %s" % current_state.state_str)
+        self.logger.debug("Current state: %s" % current_state.state_str)
+        event = self.move_the_app_to_foreground_if_needed(current_state)
+        if event is not None:
+            return event
 
         if current_state.get_app_activity_depth(self.app) < 0:
             # If the app is not in the activity stack
