@@ -885,12 +885,18 @@ class LLMPolicy(RandomPolicy):
         @return:
         """
 
+        current_state = self.from_state
+
+        # Return relevant events based on whether the application is in the foreground.
+        event = self.move_the_app_to_foreground_if_needed(current_state)
+        if event is not None:
+            return event
+
         if self.event_count == START_TO_GENERATE_EVENT_IN_POLICY or isinstance(
                 self.last_event, ReInstallAppEvent
         ):
             self.run_initializer()
             self.from_state = self.device.get_current_state()
-        current_state = self.from_state
         if current_state is None:
             import time
 
