@@ -782,7 +782,7 @@ class LLMPolicy(RandomPolicy):
         if inference:
             self.llm.actor.eval()
             self.llm.actor.eval()
-        self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+        # self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -819,10 +819,10 @@ class LLMPolicy(RandomPolicy):
                 all_splits = text_splitter.split_documents([api_document])
 
                 self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
-                """
         docs = [Document(page_content="ui testing")]
         self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
         retriever = self.vector_store.as_retriever()
+        """
 
         activity = current_state.foreground_activity
         task_prompt = (
