@@ -872,14 +872,6 @@ class LLMPolicy(RandomPolicy):
         self.llm.clean()
         selected_action = candidate_actions[actions_sampled[0]]
 
-        if isinstance(selected_action, SetTextEvent):
-            view_text = current_state.get_view_desc(selected_action.view)
-            question = f"What text should I enter to the {view_text} at maximum 30 chars? It shall be:\n"
-            prompt = f"{state_prompt}{actions[actions_sampled[0]]}\n{question}"
-            generated_text = self.llm.generate_text(prompt)
-            if len(selected_action.text) > 30:  # heuristically disable long text input
-                selected_action.text = ""
-            self.llm.clean()
         return selected_action, candidate_actions
 
     def generate_event(self):
@@ -931,11 +923,8 @@ class LLMPolicy(RandomPolicy):
                 self.logger.info(
                     "Found exectuable property in current state. No property will be checked now according to the random checking policy."
                 )
-        event = None
 
-        if event is None:
-            event = self.generate_llm_event_based_on_utg()
-
+        event = self.generate_llm_event_based_on_utg()
         if isinstance(event, RotateDevice):
             if self.last_rotate_events == KEY_RotateDeviceToPortraitEvent:
                 self.last_rotate_events = KEY_RotateDeviceToLandscapeEvent
@@ -957,60 +946,7 @@ class LLMPolicy(RandomPolicy):
         if event is not None:
             return event
 
-        if current_state.get_app_activity_depth(self.app) < 0:
-            # If the app is not in the activity stack
-            start_app_intent = self.app.get_start_intent()
-
-            # It seems the app stucks at some state, has been
-            # 1) force stopped (START, STOP)
-            #    just start the app again by increasing self.__num_restarts
-            # 2) started at least once and cannot be started (START)
-            #    pass to let viewclient deal with this case
-            # 3) nothing
-            #    a normal start. clear self.__num_restarts.
-
-            if self._event_trace.endswith(
-                    EVENT_FLAG_START_APP + EVENT_FLAG_STOP_APP
-            ) or self._event_trace.endswith(EVENT_FLAG_START_APP):
-                self._num_restarts += 1
-                self.logger.info(
-                    "The app had been restarted %d times.", self._num_restarts
-                )
-            else:
-                self._num_restarts = 0
-
-            # pass (START) through
-            if not self._event_trace.endswith(EVENT_FLAG_START_APP):
-                if self._num_restarts > MAX_NUM_RESTARTS:
-                    # If the app had been restarted too many times, enter random mode
-                    msg = "The app had been restarted too many times. Entering random mode."
-                    self.logger.info(msg)
-                    self.__random_explore = True
-                else:
-                    # Start the app
-                    self._event_trace += EVENT_FLAG_START_APP
-                    self.logger.info("Trying to start the app...")
-                    self.__action_history = [f"- start the app {self.app.app_path}"]
-                    return IntentEvent(intent=start_app_intent)
-
-        elif current_state.get_app_activity_depth(self.app) > 0:
-            # If the app is in activity stack but is not in foreground
-            self.__num_steps_outside += 1
-
-            if self.__num_steps_outside > MAX_NUM_STEPS_OUTSIDE:
-                # If the app has not been in foreground for too long, try to go back
-                if self.__num_steps_outside > MAX_NUM_STEPS_OUTSIDE_KILL:
-                    stop_app_intent = self.app.get_stop_intent()
-                    go_back_event = IntentEvent(stop_app_intent)
-                else:
-                    go_back_event = KeyEvent(name="BACK")
-                self._event_trace += EVENT_FLAG_NAVIGATE
-                self.logger.info("Going back to the app...")
-                self.__action_history.append("- go back")
-                return go_back_event
-        else:
-            # If the app is in foreground
-            self.__num_steps_outside = 0
+        self._event_trace += EVENT_FLAG_EXPLORE
 
         action, candidate_actions = self._get_action_with_LLM(
             current_state,
@@ -1021,21 +957,6 @@ class LLMPolicy(RandomPolicy):
             self.__action_history.append(current_state.get_action_desc(action))
             self.__all_action_history.add(current_state.get_action_desc(action))
             return action
-
-        if self.__random_explore:
-            self.logger.info("Trying random event...")
-            action = random.choice(candidate_actions)
-            self.__action_history.append(current_state.get_action_desc(action))
-            self.__all_action_history.add(current_state.get_action_desc(action))
-            return action
-
-        # If couldn't find a exploration target, stop the app
-        stop_app_intent = self.app.get_stop_intent()
-        self.logger.info("Cannot find an exploration target. Trying to restart app...")
-        self.__action_history.append("- stop the app")
-        self.__all_action_history.add("- stop the app")
-        self._event_trace += EVENT_FLAG_STOP_APP
-        return IntentEvent(intent=stop_app_intent)
 
     def get_last_state(self):
         return self.from_state
