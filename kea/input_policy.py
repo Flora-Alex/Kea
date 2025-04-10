@@ -838,7 +838,7 @@ class LLMPolicy(RandomPolicy):
 
         history_prompt = (
                 f"I have already completed the following steps to leave {activity} page but failed: \n "
-                + ";\n ".join(action_history)
+                + ";\n ".join(action_history if action_history is not None else ["No history found yet."])
         )
 
         state_prompt, _ = current_state.get_described_actions()
@@ -850,7 +850,7 @@ class LLMPolicy(RandomPolicy):
         actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
         actions_prompt = (
                 f"Here are the actions I can take: \n"
-                + "\n".join(actions if actions is not None else ["No action found yet."])
+                + "\n".join(actions)
         )
 
         question = "Which action should I choose next? I shall choose No. "
