@@ -986,7 +986,7 @@ class LLMPolicy(RandomPolicy):
                     # Start the app
                     self._event_trace += EVENT_FLAG_START_APP
                     self.logger.info("Trying to start the app...")
-                    self.__action_history = [f"- start the app {self.app.app_name}"]
+                    self.__action_history = [f"- start the app {self.app.app_path}"]
                     return IntentEvent(intent=start_app_intent)
 
         elif current_state.get_app_activity_depth(self.app) > 0:
