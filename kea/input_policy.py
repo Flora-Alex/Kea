@@ -862,7 +862,7 @@ class LLMPolicy(RandomPolicy):
             return self.store[session_id]
 
         obs = {"prompt": system_message_content, "action": actions}
-        idx = self.llm.get_action_and_value(obs, return_value=False)[0].cpu().numpy()
+        idx = self.llm.get_action_and_value([obs], return_value=False)[0].cpu().numpy()
         selected_action = candidate_actions[idx]
 
         if isinstance(selected_action, SetTextEvent):
