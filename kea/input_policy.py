@@ -850,7 +850,7 @@ class LLMPolicy(RandomPolicy):
         actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
         actions_prompt = (
                 f"Here are the actions I can take: \n"
-                + "\n".join(actions)
+                + "\n".join(actions if actions is not None else ["No action found yet."])
         )
 
         question = "Which action should I choose next? I shall choose No. "
@@ -862,16 +862,18 @@ class LLMPolicy(RandomPolicy):
             return self.store[session_id]
 
         obs = {"prompt": system_message_content, "action": actions}
-        idx = self.llm.get_action_and_value([obs], return_value=False)[0].cpu().numpy()
-        selected_action = candidate_actions[idx]
+        actions_sampled = self.llm.get_action_and_value([obs], return_value=False)[0].cpu().numpy()
+        self.llm.clean()
+        selected_action = candidate_actions[actions_sampled[0]]
 
         if isinstance(selected_action, SetTextEvent):
             view_text = current_state.get_view_desc(selected_action.view)
             question = f"What text should I enter to the {view_text} at maximum 30 chars? It shall be:\n"
-            prompt = f"{state_prompt}{actions[idx]}\n{question}"
+            prompt = f"{state_prompt}{actions[actions_sampled[0]]}\n{question}"
             generated_text = self.llm.generate_text(prompt)
             if len(selected_action.text) > 30:  # heuristically disable long text input
                 selected_action.text = ""
+            self.llm.clean()
         return selected_action, candidate_actions
 
     def generate_event(self):

@@ -29,7 +29,7 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
 
 
 class LLMAgent(nn.Module):
-    def __init__(self, normalization_mode='token', load_path=None, load_8bit=False):
+    def __init__(self, normalization_mode='token', load_path=None, load_8bit=False, batch_size=2):
         super().__init__()
 
         self.load_8bit = load_8bit
@@ -39,6 +39,8 @@ class LLMAgent(nn.Module):
         # self.lora_dropout = 0.05
         self.lora_dropout = 0
         self.lora_target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+        self.batch_size = batch_size
 
         assert (
             self.base_model
@@ -157,7 +159,6 @@ class LLMAgent(nn.Module):
 
     def get_action_and_value(self, text_obs, action=None, is_warmup=False, return_value=True):
         prompt = [o["prompt"] for o in text_obs]
-
         action_list = [o["action"] for o in text_obs]
 
         prompt_nums = len(prompt)
@@ -167,39 +168,57 @@ class LLMAgent(nn.Module):
         for p, ac in zip(prompt, action_list):
             sequence += [p + " " + a for a in ac]
 
-        inputs = self.tokenizer(sequence, return_tensors="pt", padding=True)
-        input_ids = inputs["input_ids"].to(self.device)
+        # Construct input sequences: prompt + action for each option
+        sequence = []
+        for p, ac in zip(prompt, action_list):
+            sequence += [p + " " + a for a in ac]
 
-        attention_mask = inputs["attention_mask"].to(self.device)
+        # Flatten the action list for later normalization
+        flat_action_list = [item for sublist in action_list for item in sublist]
 
-        if is_warmup:
-            with torch.no_grad():
+        # Tokenize the flattened action list and calculate token length per action
+        self.action_list_ids = self.tokenizer(flat_action_list, return_tensors="pt", padding=True)
+        self.action_list_length = torch.sum(self.action_list_ids["attention_mask"], dim=-1) - 1  # exclude BOS
+
+        # Prepare to store logits
+        all_action_logits = []
+
+        # Process in batches
+        for i in range(0, len(sequence), self.batch_size):
+            batch_seq = sequence[i:i + self.batch_size]
+            batch_input = self.tokenizer(batch_seq, return_tensors="pt", padding=True).to(self.device)
+
+            input_ids = batch_input["input_ids"]
+            attention_mask = batch_input["attention_mask"]
+
+            # Forward pass (no grad if warmup)
+            with torch.no_grad() if is_warmup else torch.enable_grad():
                 outputs = self.actor(input_ids, attention_mask=attention_mask)
-        else:
-            outputs = self.actor(input_ids, attention_mask=attention_mask)
 
-        action_list = [item for sublist in action_list for item in sublist]
-        self.action_list_ids = self.tokenizer(action_list, return_tensors="pt", padding=True)
+            logits = torch.log_softmax(outputs.logits, dim=-1)
 
-        self.action_list_length = torch.sum(self.action_list_ids["attention_mask"], dim=-1) - 1  # delete first token
+            # Shift inputs for token prediction
+            logits = logits[:, :-1, :]
+            input_ids = input_ids[:, 1:]
+            gen_logits = torch.gather(logits, 2, input_ids[:, :, None]).squeeze(-1)
 
-        sequence_length = torch.sum(attention_mask, dim=-1)
-        action_index = [[end - start, end] for start, end in zip(self.action_list_length, sequence_length)]
+            # Slice logits to get action-specific scores
+            sequence_length = torch.sum(attention_mask, dim=-1)
+            batch_action_length = self.action_list_length[i:i + len(batch_seq)]
+            batch_action_index = [[end - start, end] for start, end in zip(batch_action_length, sequence_length)]
 
-        logits = torch.log_softmax(outputs.logits, dim=-1)
+            slices = [gen_logits[j, start - 1:end - 1] for j, (start, end) in enumerate(batch_action_index)]
+            batch_action_logits = torch.stack([torch.sum(s) for s in slices])
 
-        logits = logits[:, :-1, :]
-        input_ids = input_ids[:, 1:]
-        gen_logits = torch.gather(logits, 2, input_ids[:, :, None]).squeeze(-1)
+            all_action_logits.append(batch_action_logits.detach())
 
-        slices = [gen_logits[i, start - 1:end - 1] for i, (start, end) in enumerate(action_index)]
-
-        action_logits = torch.stack([torch.sum(s) for s in slices])
+        # Combine all logits from batches
+        action_logits = torch.cat(all_action_logits, dim=0).to(self.device)
 
         if self.normalization_mode == 'token':
             action_logits = action_logits / self.action_list_length.to(self.device)
         elif self.normalization_mode == 'word':
-            action_word_num = torch.tensor([len(action.split()) for action in action_list]).to(self.device)
+            action_word_num = torch.tensor([len(action.split()) for action in flat_action_list]).to(self.device)
             action_logits = action_logits / action_word_num
         elif self.normalization_mode == 'sum':
             action_logits = action_logits
@@ -255,6 +274,8 @@ class LLMAgent(nn.Module):
 
         return generated_text
 
+    def clean(self):
+        torch.cuda.empty_cache()
 
 ## Note that the following code is modified from
 ## https://github.com/microsoft/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat/training/utils/model/reward_model.py
