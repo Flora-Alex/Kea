@@ -865,6 +865,7 @@ class LLMPolicy(RandomPolicy):
             return self.store[session_id]
 
         obs = {"prompt": system_message_content, "action": actions}
+        print(system_message_content)
         actions_sampled = self.llm.get_action_and_value([obs], return_value=False)[0].cpu().numpy()
         self.llm.clean()
         selected_action = candidate_actions[actions_sampled[0]]
