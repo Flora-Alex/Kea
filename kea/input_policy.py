@@ -4,16 +4,9 @@ import random
 import copy
 import time
 
-from langchain_huggingface import HuggingFacePipeline
-from langchain_community.chat_models import ChatHuggingFace
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.history_aware_retriever import create_history_aware_retriever
-from langchain.chains.retrieval import create_retrieval_chain
 from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.runnables import RunnableWithMessageHistory
 from langchain_ollama import OllamaEmbeddings
 from langchain_core.tools import tool
 from langchain_core.documents import Document
@@ -776,6 +769,7 @@ class LLMPolicy(RandomPolicy):
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
         self.__action_history = []
+        self.store = {}
         self.__all_action_history = set()
         self.__activity_history = set()
         self.from_state = None
@@ -830,12 +824,6 @@ class LLMPolicy(RandomPolicy):
         self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
         retriever = self.vector_store.as_retriever()
 
-        model_name = "Qwen/Qwen2-0.5B"
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(model_name)
-        pipe = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=512)
-        self.llm.llm = HuggingFacePipeline(pipline = pipe)
-
         activity = current_state.foreground_activity
         task_prompt = (
                 self.task
@@ -866,51 +854,12 @@ class LLMPolicy(RandomPolicy):
         )
 
         question = "Which action should I choose next? I shall choose No. "
-        system_message_content = f"{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"\
-                                 "{context}"
-
-        contextualize_q_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", task_prompt),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
-
-        history_aware_retriever = create_history_aware_retriever(
-            self.llm.llm, retriever, contextualize_q_prompt
-        )
-
-        qa_prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_message_content),
-                MessagesPlaceholder("chat_history"),
-                ("human", "{input}"),
-            ]
-        )
-        question_answer_chain = create_stuff_documents_chain(self.llm.llm, qa_prompt)
-        rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-        store = {}
+        system_message_content = f"{task_prompt}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
 
         def get_session_history(session_id: str) -> BaseChatMessageHistory:
-            if session_id not in store:
-                store[session_id] = ChatMessageHistory()
-            return store[session_id]
-
-        conversational_rag_chain = RunnableWithMessageHistory(
-            rag_chain,
-            get_session_history,
-            input_messages_key="input",
-            history_messages_key="chat_history",
-            output_messages_key="answer",
-        )
-
-        var = conversational_rag_chain.invoke(
-            {"input": "What is your solution to get away from the UI tarpit?"},
-            config={
-                "configurable": {"session_id": "a1"}
-            },  # constructs a key in `store`.
-        )["answer"]
+            if session_id not in self.store:
+                self.store[session_id] = ChatMessageHistory()
+            return self.store[session_id]
 
         obs = {"prompt": system_message_content, "action": actions}
         idx = self.llm.get_action_and_value(obs, return_value=False)[0].cpu().numpy()
