@@ -940,7 +940,7 @@ class DeviceState(object):
             desc = f'- {action_name} {self.get_view_desc(action.view)}'
         return desc
     
-    def get_covered_widgets(self):
+    def s(self):
         """
         get all covered widgets
         """

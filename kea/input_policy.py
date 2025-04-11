@@ -19,6 +19,8 @@ from langchain_core.tools import tool
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 
+import kea
+from . import input_manager
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -104,6 +106,18 @@ class InputPolicy(object):
         self._num_steps_outside = 0
         self._event_trace = ""
 
+        self.effective_event_strs = set()
+        self.ineffective_event_strs = set()
+        self.explored_state_strs = set()
+        self.reached_activities = set()
+
+        self.last_rules_whose_preconditions_are_satisfied=None
+        self.cur_rules_whose_preconditions_are_satisfied=self.kea.get_rules_whose_preconditions_are_satisfied()
+
+        self.done = False
+        self.obs = None
+
+
     def start(self, input_manager: "InputManager"):
         """
         start producing events
@@ -117,6 +131,7 @@ class InputPolicy(object):
                 # always try to close the keyboard on the device.
                 # if self.device.is_harmonyos is False and hasattr(self.device, "u2"):
                 #     self.device.u2.set_fastinput_ime(True)
+                self.done=False
 
                 self.logger.info("Exploration event count: %d", self.event_count)
 
@@ -149,6 +164,24 @@ class InputPolicy(object):
                     input_manager.add_event(event)
                 self.to_state = self.device.get_current_state()
                 self.last_event = event
+
+
+                #处理event
+                event_str = event.get_event_str(self.from_state)
+
+                if self.from_state.state_str == self.to_state.state_str:
+                    self.ineffective_event_strs.add(event_str)
+                    if event_str in self.effective_event_strs:
+                        self.effective_event_strs.remove(event_str)
+                    return
+                self.effective_event_strs.add(event_str)
+
+                next_obs, reward, next_done, info = self.step(event)
+
+
+
+
+
                 if self.allow_to_generate_utg:
                     self.update_utg()
 
@@ -180,10 +213,17 @@ class InputPolicy(object):
 
                 traceback.print_exc()
             self.event_count += 1
+        self.done = True
         self.tear_down()
 
     def update_utg(self):
         self.utg.add_transition(self.last_event, self.from_state, self.to_state)
+
+    def step(self, actions):
+        pass
+
+
+
 
     def move_the_app_to_foreground_if_needed(self, current_state):
         """
@@ -778,6 +818,10 @@ class LLMPolicy(RandomPolicy):
         self.__action_history = []
         self.__all_action_history = set()
         self.__activity_history = set()
+
+        self.last_rules_whose_preconditions_are_satisfied =None
+        self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
+
         self.from_state = None
         self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on my extensive App testing experience.")
@@ -789,6 +833,93 @@ class LLMPolicy(RandomPolicy):
             self.llm.actor.eval()
             self.llm.actor.eval()
         self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+    def step(self, actions):
+        next_obs=self.obs
+        next_done=self.done
+
+
+        info={}
+        find_bug_rewards={
+            "FAILURE":200,
+            "PASS":1,
+            "UI_NOT_FOUND":0,
+            "PRECON_NOT_SATISFIED":0
+
+        }
+        find_new_event_reward=2.0
+        find_new_state_reward=2.0
+        find_new_rules_whose_preconditions_are_satisfied=2.0
+
+        #更新rules_whose_preconditions_are_satisfied
+        self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
+        self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
+
+        reward = 0
+        #找到bug
+        reward += find_bug_rewards[self.check_rule()]
+
+        if len(self.cur_rules_whose_preconditions_are_satisfied)>len(self.last_rules_whose_preconditions_are_satisfied):
+            reward += find_new_rules_whose_preconditions_are_satisfied
+        #探索到新event
+        if not self.is_event_explored(actions, self.from_state):
+            reward+=find_new_event_reward
+        # 探索到新state
+        if not self.is_state_explored(self.to_state):
+            reward+=find_new_state_reward
+
+
+
+        return next_obs, reward, next_done, info
+
+    def check_rule(self):
+
+        rules_ready_to_be_checked = (
+            self.kea.get_rules_whose_preconditions_are_satisfied()
+        )
+        rules_ready_to_be_checked.update(self.kea.get_rules_without_preconditions())
+        if len(rules_ready_to_be_checked) == 0:
+            return
+
+        candidate_rules_list = list(rules_ready_to_be_checked.keys())
+        # randomly select a rule to check
+        rule_to_check = random.choice(candidate_rules_list)
+
+        if rule_to_check is not None:
+            self.statistics_of_rules[str(rule_to_check.function.__name__)][
+                RULE_STATE.PROPERTY_CHECKED
+            ] += 1
+            precondition_page_index = self.device.cur_event_count
+            # check rule, record relavant info and output log
+            result = self.kea.execute_rule(
+                rule=rule_to_check, keaTest=rules_ready_to_be_checked[rule_to_check]
+            )
+            if result == CHECK_RESULT.ASSERTION_FAILURE:
+                return "FAILURE"
+            elif result == CHECK_RESULT.PASS:
+                return "PASS"
+            elif result == CHECK_RESULT.UI_NOT_FOUND:
+                return "UI_NOT_FOUND"
+            elif result == CHECK_RESULT.PRECON_NOT_SATISFIED:
+                return "PRECON_NOT_SATISFIED"
+            else:
+                raise AttributeError(f"Invalid property checking result {result}")
+
+    def is_event_explored(self, event, state):
+        event_str = event.get_event_str(state)
+        return (
+                event_str in self.effective_event_strs
+                or event_str in self.ineffective_event_strs
+        )
+
+    def is_state_explored(self, state):
+        if state.state_str in self.explored_state_strs:
+            return True
+        for possible_event in state.get_possible_input():
+            if not self.is_event_explored(possible_event, state):
+                return False
+        self.explored_state_strs.add(state.state_str)
+        return True
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -912,8 +1043,8 @@ class LLMPolicy(RandomPolicy):
             },  # constructs a key in `store`.
         )["answer"]
 
-        obs = {"prompt": system_message_content, "action": actions}
-        idx = self.llm.get_action_and_value(obs, return_value=False)[0].cpu().numpy()
+        self.obs = {"prompt": system_message_content, "action": actions}
+        idx = self.llm.get_action_and_value(self.obs, return_value=False)[0].cpu().numpy()
         selected_action = candidate_actions[idx]
 
         if isinstance(selected_action, SetTextEvent):
