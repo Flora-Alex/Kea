@@ -34,7 +34,7 @@ from .utg import UTG
 from .kea import CHECK_RESULT
 from typing import TYPE_CHECKING, Dict
 
-from .llm_policy import LLMAgent
+from .api_interface import PPOClient
 
 if TYPE_CHECKING:
     from .input_manager import InputManager
@@ -762,7 +762,6 @@ class LLMPolicy(RandomPolicy):
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
             output_dir=None,
-            inference=True
     ):
         super(LLMPolicy, self).__init__(device, app, kea)
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -778,12 +777,90 @@ class LLMPolicy(RandomPolicy):
 
         # if not os.environ.get("OPENAI_API_KEY"):
         #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
-        self.llm = LLMAgent(normalization_mode="word", load_8bit=False)
-        if inference:
-            self.llm.actor.eval()
-            self.llm.critic.eval()
-        self.inference = inference
+        self.api = PPOClient()
+        self.api.attach()
+        self.logger.info("API attached.")
         # self.embeddings = OllamaEmbeddings(model="nomic-embed-text")
+
+    def start(self, input_manager: "InputManager"):
+        """
+        start producing events
+        :param input_manager: instance of InputManager
+        """
+        # number of events that have been executed
+        self.event_count = 0
+        # self.input_manager = input_manager
+        while input_manager.enabled and self.event_count < input_manager.event_count:
+            try:
+                # always try to close the keyboard on the device.
+                # if self.device.is_harmonyos is False and hasattr(self.device, "u2"):
+                #     self.device.u2.set_fastinput_ime(True)
+
+                self.logger.info("Exploration event count: %d", self.event_count)
+
+                if self.to_state is not None:
+                    self.from_state = self.to_state
+                else:
+                    self.from_state = self.device.get_current_state()
+
+                # set the from_state to droidbot to let the pdl get the state
+                self.device.from_state = self.from_state
+
+                if self.event_count == 0:
+                    # If the application is running, close the application.
+                    event = KillAppEvent(app=self.app)
+                elif self.event_count == 1:
+                    # start the application
+                    event = IntentEvent(self.app.get_start_intent())
+                else:
+                    event = self.generate_event()
+
+                if event is not None:
+                    try:
+                        self.device.save_screenshot_for_report(
+                            event=event, current_state=self.from_state
+                        )
+                    except Exception as e:
+                        self.logger.error("SaveScreenshotForReport failed: %s", e)
+                        self.from_state = self.device.get_current_state()
+                        self.device.save_screenshot_for_report(event=event, current_state=self.from_state)
+                    input_manager.add_event(event)
+                self.to_state = self.device.get_current_state()
+                self.last_event = event
+                if self.allow_to_generate_utg:
+                    self.update_utg()
+
+                bug_report_path = os.path.join(self.device.output_dir, "all_states")
+                # TODO this function signature is too long?
+                generate_report(
+                    bug_report_path,
+                    self.device.output_dir,
+                    self.triggered_bug_information,
+                    self.time_needed_to_satisfy_precondition,
+                    self.device.cur_event_count,
+                    self.time_recoder.get_time_duration(),
+                    self.statistics_of_rules
+                )
+
+            except KeyboardInterrupt:
+                self.api.detach()
+                self.logger.info("API detached.")
+                break
+            except InputInterruptedException as e:
+                self.logger.info("stop sending events: %s" % e)
+                self.logger.info("action count: %d" % self.event_count)
+                break
+
+            except RuntimeError as e:
+                self.logger.info("RuntimeError: %s, stop sending events" % e)
+                break
+            except Exception as e:
+                self.logger.warning("exception during sending events: %s" % e)
+                import traceback
+
+                traceback.print_exc()
+            self.event_count += 1
+        self.tear_down()
 
     @tool(response_format="content_and_artifact")
     def retrieve(self, query: str):
@@ -867,9 +944,10 @@ class LLMPolicy(RandomPolicy):
 
         obs = {"prompt": system_message_content, "action": actions}
         # print(system_message_content)
-        actions_sampled = self.llm.get_action_and_value([obs], return_value=False, is_warmup=self.inference)[0].cpu().numpy()
-        self.llm.clean()
-        selected_action = candidate_actions[actions_sampled[0]]
+
+        # TODO: Adapt this to api interface
+        actions_sampled = self.api.step(obs)
+        selected_action = candidate_actions[actions_sampled["action"]]
 
         return selected_action, candidate_actions
 

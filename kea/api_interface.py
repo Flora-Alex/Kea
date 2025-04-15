@@ -20,12 +20,12 @@ class PPOClient:
         print(f"[CLIENT] Detached task: {self.task_id}")
         self.task_id = None
 
-    def step(self, observation: dict):
+    def step(self, obs: dict):
         if not self.task_id:
             raise ValueError("Task not attached.")
         payload = {
             "task_id": self.task_id,
-            "obs": observation
+            "obs": obs
         }
         res = requests.post(f"{self.base_url}/step", json=payload)
         res.raise_for_status()
