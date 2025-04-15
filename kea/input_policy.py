@@ -810,8 +810,10 @@ class LLMPolicy(RandomPolicy):
 
                 # set the from_state to droidbot to let the pdl get the state
                 self.device.from_state = self.from_state
-
-                if self.event_count == 0:
+                event = self.move_the_app_to_foreground_if_needed(self.from_state)
+                if event is not None:
+                    return event
+                elif self.event_count == 0:
                     # If the application is running, close the application.
                     event = KillAppEvent(app=self.app)
                 elif self.event_count == 1:
@@ -883,7 +885,7 @@ class LLMPolicy(RandomPolicy):
             self.event_count += 1
         self.tear_down()
 
-    def CalculateReward(self,event):
+    def CalculateReward(self, event, base_reward = 50):
         find_bug_rewards = {
             "FAILURE": 200,
             "PASS": 10,
@@ -892,12 +894,13 @@ class LLMPolicy(RandomPolicy):
             "NO_RULES": 0
         }
         find_new_event_reward = 20.0
-        find_new_state_reward = 20.0
+        find_new_state_reward = 50.0
         find_new_rules_whose_preconditions_are_satisfied = 20.0
+        error_punishment = 30.0
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
         self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
-        reward = 0
+        reward = base_reward
         # 找到bug
         # reward += find_bug_rewards[self.check_rule()]
         if len(self.cur_rules_whose_preconditions_are_satisfied) > len(
@@ -909,7 +912,12 @@ class LLMPolicy(RandomPolicy):
         # 探索到新state
         if not self.is_state_explored(self.to_state):
             reward += find_new_state_reward
+        # app不在前台
+        if self.to_state.get_app_activity_depth(self.app) != 0:
+            reward -= error_punishment
         return reward
+
+
 
     def check_rule(self):
 
@@ -1107,10 +1115,6 @@ class LLMPolicy(RandomPolicy):
         """
         current_state = self.from_state
         self.logger.debug("Current state: %s" % current_state.state_str)
-        event = self.move_the_app_to_foreground_if_needed(current_state)
-        if event is not None:
-            return event
-
         self._event_trace += EVENT_FLAG_EXPLORE
 
         action, candidate_actions = self._get_action_with_LLM(
