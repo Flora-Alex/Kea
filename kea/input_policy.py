@@ -965,11 +965,9 @@ class LLMPolicy(RandomPolicy):
     def is_state_explored(self, state):
         if state.state_str in self.explored_state_strs:
             return True
-        for possible_event in state.get_possible_input():
-            if not self.is_event_explored(possible_event, state):
-                return False
+        # PS: No need to check events here.
         self.explored_state_strs.add(state.state_str)
-        return True
+        return False
 
 
 
