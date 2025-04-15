@@ -143,6 +143,11 @@ class InputPolicy(object):
                     input_manager.add_event(event)
                 self.to_state = self.device.get_current_state()
                 self.last_event = event
+
+
+
+
+
                 if self.allow_to_generate_utg:
                     self.update_utg()
 
@@ -771,6 +776,14 @@ class LLMPolicy(RandomPolicy):
         self.store = {}
         self.__all_action_history = set()
         self.__activity_history = set()
+
+        self.effective_event_strs = set()
+        self.ineffective_event_strs = set()
+        self.explored_state_strs = set()
+        self.reached_activities = set()
+        self.last_rules_whose_preconditions_are_satisfied = None
+        self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
+
         self.from_state = None
         self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on my extensive App testing experience.")
@@ -827,6 +840,22 @@ class LLMPolicy(RandomPolicy):
                     input_manager.add_event(event)
                 self.to_state = self.device.get_current_state()
                 self.last_event = event
+
+                event_str = event.get_event_str(self.from_state)
+                if self.from_state.state_str == self.to_state.state_str:
+                    self.ineffective_event_strs.add(event_str)
+                    if event_str in self.effective_event_strs:
+                        self.effective_event_strs.remove(event_str)
+                    return
+                self.effective_event_strs.add(event_str)
+                reward=self.CalculateReward(event)
+                self.api.feedback(reward=reward,done=False)
+
+
+
+
+
+
                 if self.allow_to_generate_utg:
                     self.update_utg()
 
@@ -873,6 +902,89 @@ class LLMPolicy(RandomPolicy):
             for doc in retrieved_docs
         )
         return serialized, retrieved_docs
+
+    def CalculateReward(self,event):
+        find_bug_rewards = {
+            "FAILURE": 200,
+            "PASS": 10,
+            "UI_NOT_FOUND": 0,
+            "PRECON_NOT_SATISFIED": 0
+        }
+        find_new_event_reward = 20.0
+        find_new_state_reward = 20.0
+        find_new_rules_whose_preconditions_are_satisfied = 20.0
+        # 更新rules_whose_preconditions_are_satisfied
+        self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
+        self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
+        reward = 0
+        # 找到bug
+        reward += find_bug_rewards[self.check_rule()]
+        if len(self.cur_rules_whose_preconditions_are_satisfied) > len(
+                self.last_rules_whose_preconditions_are_satisfied):
+            reward += find_new_rules_whose_preconditions_are_satisfied
+        # 探索到新event
+        if not self.is_event_explored(event, self.from_state):
+            reward += find_new_event_reward
+        # 探索到新state
+        if not self.is_state_explored(self.to_state):
+            reward += find_new_state_reward
+        return reward
+
+    def check_rule(self):
+
+        rules_ready_to_be_checked = (
+            self.kea.get_rules_whose_preconditions_are_satisfied()
+        )
+        rules_ready_to_be_checked.update(self.kea.get_rules_without_preconditions())
+        if len(rules_ready_to_be_checked) == 0:
+            return
+        candidate_rules_list = list(rules_ready_to_be_checked.keys())
+        # randomly select a rule to check
+        rule_to_check = random.choice(candidate_rules_list)
+        if rule_to_check is not None:
+            self.statistics_of_rules[str(rule_to_check.function.__name__)][
+                RULE_STATE.PROPERTY_CHECKED
+            ] += 1
+            precondition_page_index = self.device.cur_event_count
+            # check rule, record relavant info and output log
+            result = self.kea.execute_rule(
+                rule=rule_to_check, keaTest=rules_ready_to_be_checked[rule_to_check]
+            )
+
+            if result == CHECK_RESULT.ASSERTION_FAILURE:
+                return "FAILURE"
+            elif result == CHECK_RESULT.PASS:
+                return "PASS"
+            elif result == CHECK_RESULT.UI_NOT_FOUND:
+                return "UI_NOT_FOUND"
+            elif result == CHECK_RESULT.PRECON_NOT_SATISFIED:
+                return "PRECON_NOT_SATISFIED"
+            else:
+                raise AttributeError(f"Invalid property checking result {result}")
+
+    def is_event_explored(self, event, state):
+
+        event_str = event.get_event_str(state)
+
+        return (
+
+                event_str in self.effective_event_strs
+
+                or event_str in self.ineffective_event_strs
+        )
+
+    def is_state_explored(self, state):
+        if state.state_str in self.explored_state_strs:
+            return True
+        for possible_event in state.get_possible_input():
+            if not self.is_event_explored(possible_event, state):
+                return False
+        self.explored_state_strs.add(state.state_str)
+        return True
+
+
+
+
 
     # Generate a response using the retrieved content.
     def _get_action_with_LLM(self, current_state, action_history, activity_history):
