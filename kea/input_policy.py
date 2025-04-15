@@ -846,7 +846,6 @@ class LLMPolicy(RandomPolicy):
                     self.ineffective_event_strs.add(event_str)
                     if event_str in self.effective_event_strs:
                         self.effective_event_strs.remove(event_str)
-                    return
                 self.effective_event_strs.add(event_str)
                 reward=self.CalculateReward(event)
                 self.api.feedback(reward=reward,done=False)
@@ -908,7 +907,8 @@ class LLMPolicy(RandomPolicy):
             "FAILURE": 200,
             "PASS": 10,
             "UI_NOT_FOUND": 0,
-            "PRECON_NOT_SATISFIED": 0
+            "PRECON_NOT_SATISFIED": 0,
+            "NO_RULES": 0
         }
         find_new_event_reward = 20.0
         find_new_state_reward = 20.0
@@ -937,7 +937,7 @@ class LLMPolicy(RandomPolicy):
         )
         rules_ready_to_be_checked.update(self.kea.get_rules_without_preconditions())
         if len(rules_ready_to_be_checked) == 0:
-            return
+            return "NO_RULES"
         candidate_rules_list = list(rules_ready_to_be_checked.keys())
         # randomly select a rule to check
         rule_to_check = random.choice(candidate_rules_list)
