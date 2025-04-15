@@ -801,6 +801,7 @@ class LLMPolicy(RandomPolicy):
                 #     self.device.u2.set_fastinput_ime(True)
 
                 self.logger.info("Exploration event count: %d", self.event_count)
+                is_llm_event=False
 
                 if self.to_state is not None:
                     self.from_state = self.to_state
@@ -818,6 +819,7 @@ class LLMPolicy(RandomPolicy):
                     event = IntentEvent(self.app.get_start_intent())
                 else:
                     event = self.generate_event()
+                    is_llm_event = True
 
                 if event is not None:
                     try:
@@ -839,8 +841,10 @@ class LLMPolicy(RandomPolicy):
                     if event_str in self.effective_event_strs:
                         self.effective_event_strs.remove(event_str)
                 self.effective_event_strs.add(event_str)
-                reward=self.CalculateReward(event)
-                self.api.feedback(reward=reward,done=False)
+                
+                if is_llm_event:
+                    reward=self.CalculateReward(event)
+                    self.api.feedback(reward=reward,done=False)
 
 
 
