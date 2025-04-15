@@ -4,15 +4,6 @@ import random
 import copy
 import time
 
-
-from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_ollama import OllamaEmbeddings
-from langchain_core.tools import tool
-from langchain_core.documents import Document
-from langchain_chroma import Chroma
-# from onnxruntime.transformers.models.gpt2.parity_check_helper import inference
-
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -1048,11 +1039,6 @@ class LLMPolicy(RandomPolicy):
 
         question = "Which action should I choose next? I shall choose No. "
         system_message_content = f"{task_prompt}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
-
-        def get_session_history(session_id: str) -> BaseChatMessageHistory:
-            if session_id not in self.store:
-                self.store[session_id] = ChatMessageHistory()
-            return self.store[session_id]
 
         obs = {"prompt": system_message_content, "action": actions}
         # print(system_message_content)
