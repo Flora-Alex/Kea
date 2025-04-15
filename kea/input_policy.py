@@ -833,6 +833,7 @@ class LLMPolicy(RandomPolicy):
                 self.last_event = event
 
                 event_str = event.get_event_str(self.from_state)
+
                 if self.from_state.state_str == self.to_state.state_str:
                     self.ineffective_event_strs.add(event_str)
                     if event_str in self.effective_event_strs:
@@ -840,9 +841,6 @@ class LLMPolicy(RandomPolicy):
                 self.effective_event_strs.add(event_str)
                 reward=self.CalculateReward(event)
                 self.api.feedback(reward=reward,done=False)
-
-
-
 
 
 
@@ -897,7 +895,7 @@ class LLMPolicy(RandomPolicy):
         self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
         reward = 0
         # 找到bug
-        reward += find_bug_rewards[self.check_rule()]
+        # reward += find_bug_rewards[self.check_rule()]
         if len(self.cur_rules_whose_preconditions_are_satisfied) > len(
                 self.last_rules_whose_preconditions_are_satisfied):
             reward += find_new_rules_whose_preconditions_are_satisfied
