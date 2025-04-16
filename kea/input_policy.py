@@ -812,7 +812,8 @@ class LLMPolicy(RandomPolicy):
                 self.device.from_state = self.from_state
                 event = self.move_the_app_to_foreground_if_needed(self.from_state)
                 if event is not None:
-                    return event
+                    # Do nothing
+                    pass
                 elif self.event_count == 0:
                     # If the application is running, close the application.
                     event = KillAppEvent(app=self.app)
