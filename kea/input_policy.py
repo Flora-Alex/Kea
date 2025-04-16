@@ -897,7 +897,7 @@ class LLMPolicy(RandomPolicy):
         find_new_event_reward = 10.0
         find_new_state_reward = 30.0
         find_new_rules_whose_preconditions_are_satisfied = 20.0
-        error_punishment = 35.0
+        error_punishment = 20.0
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
         self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
@@ -915,7 +915,7 @@ class LLMPolicy(RandomPolicy):
             reward += find_new_state_reward
         # app不在前台
         if self.to_state.get_app_activity_depth(self.app) != 0:
-            reward -= error_punishment
+            reward = error_punishment
         return reward
 
 
