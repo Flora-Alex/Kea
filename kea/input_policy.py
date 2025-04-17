@@ -1041,6 +1041,12 @@ class LLMPolicy(RandomPolicy):
         # print(system_message_content)
 
         # TODO: Adapt this to api interface
+        status = self.api.ask()
+        if status["status"] != "ok":
+            # Maybe training, hold for 1s
+            self.logger.error(status["status"])
+            time.sleep(1)
+            status = self.api.ask()
         actions_sampled = self.api.step(obs)
         selected_action = candidate_actions[actions_sampled["action"]]
 
