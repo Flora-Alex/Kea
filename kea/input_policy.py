@@ -69,7 +69,7 @@ class InputPolicy(object):
     It should call AppEventManager.send_event method continuously
     """
 
-    def __init__(self, device: "Device", app: "App", allow_to_generate_utg=False):
+    def __init__(self, device: "Device", app: "App", allow_to_generate_utg=False, base_url=None):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.time_recoder = Time()
         self.utg = UTG(device=device, app=app)
@@ -81,6 +81,7 @@ class InputPolicy(object):
         self.from_state = None
         self.to_state = None
         self.allow_to_generate_utg = allow_to_generate_utg
+        self.base_url = base_url
         self.triggered_bug_information = []
         self.time_needed_to_satisfy_precondition = []
         self.statistics_of_rules = {}
@@ -258,8 +259,8 @@ class KeaInputPolicy(InputPolicy):
     state-based input policy
     """
 
-    def __init__(self, device, app, kea: "Kea" = None, allow_to_generate_utg=False):
-        super(KeaInputPolicy, self).__init__(device, app, allow_to_generate_utg)
+    def __init__(self, device, app, kea: "Kea" = None, allow_to_generate_utg=False, base_url=None):
+        super(KeaInputPolicy, self).__init__(device, app, allow_to_generate_utg, base_url)
         self.kea = kea
         # self.last_event = None
         # self.from_state = None
@@ -380,10 +381,11 @@ class RandomPolicy(KeaInputPolicy):
             number_of_events_that_restart_app=100,
             clear_and_reinstall_app=False,
             allow_to_generate_utg=False,
+            base_url=None,
             disable_rotate=False,
             output_dir=None
     ):
-        super(RandomPolicy, self).__init__(device, app, kea, allow_to_generate_utg)
+        super(RandomPolicy, self).__init__(device, app, kea, allow_to_generate_utg,base_url)
         self.restart_app_after_check_property = restart_app_after_check_property
         self.number_of_events_that_restart_app = number_of_events_that_restart_app
         self.clear_and_reinstall_app = clear_and_reinstall_app
@@ -757,9 +759,10 @@ class LLMPolicy(RandomPolicy):
             number_of_events_that_restart_app=100,
             clear_and_restart_app_data_after_100_events=False,
             allow_to_generate_utg=False,
+            base_url=None,
             output_dir=None,
     ):
-        super(LLMPolicy, self).__init__(device, app, kea)
+        super(LLMPolicy, self).__init__(device, app, kea,base_url)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -781,7 +784,7 @@ class LLMPolicy(RandomPolicy):
 
         # if not os.environ.get("OPENAI_API_KEY"):
         #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
-        self.api = PPOClient()
+        self.api = PPOClient(base_url=base_url)
         self.api.attach()
         self.logger.info("API attached.")
         # self.embeddings = OllamaEmbeddings(model="nomic-embed-text")

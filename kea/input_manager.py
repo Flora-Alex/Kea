@@ -47,6 +47,7 @@ class InputManager(object):
         kea=None,
         number_of_events_that_restart_app=100,
         generate_utg=False,
+        base_url=None,
         output_dir=None,
         is_package=False,
         disable_rotate=False
@@ -75,6 +76,7 @@ class InputManager(object):
         self.profiling_method = profiling_method
         self.number_of_events_that_restart_app = number_of_events_that_restart_app
         self.generate_utg = generate_utg
+        self.base_url = base_url
         self.sim_calculator = Similarity(DEFAULT_UI_TARPIT_NUM)
         self.disable_rotate=disable_rotate
         self.is_package = is_package
@@ -95,7 +97,7 @@ class InputManager(object):
         elif self.policy_name == POLICY_RANDOM:
             input_policy = RandomPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_reinstall_app= not self.is_package, allow_to_generate_utg = self.generate_utg,disable_rotate=self.disable_rotate,output_dir=self.output_dir)
         elif self.policy_name == POLICY_LLM:
-            input_policy = LLMPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir)
+            input_policy = LLMPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_restart_app_data_after_100_events=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir,base_url=self.base_url)
         else:
             self.logger.warning(
                 "No valid input policy specified. Using policy \"none\"."

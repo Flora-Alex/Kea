@@ -48,6 +48,7 @@ class Setting:
     run_initial_rules_after_every_mutation = True
     is_harmonyos: bool = False
     generate_utg: bool = False
+    base_url: str = None
     is_package: bool = False
     disable_rotate: bool = False
 
@@ -89,6 +90,8 @@ def parse_args():
                         help="load the args from config.yml, and the args in the command line will be ignored.")
     parser.add_argument("-utg", action="store_true", dest="generate_utg", default=False,
                         help="Generate UI transition graph")
+    parser.add_argument("-base_url", action="store", dest="base_url", default="http://localhost:8000",
+                        help="the url of Server")
     parser.add_argument("-disable_rotate", action="store_true", dest="disable_rotate", default=False,
                         help="Disable rotate event in the testing")
     options = parser.parse_args()
@@ -177,6 +180,7 @@ def start_kea(kea: "Kea", settings: "Setting" = None):
         is_package=settings.is_package,
         settings=settings,
         generate_utg=settings.generate_utg,
+        base_url=settings.base_url,
         disable_rotate=settings.disable_rotate
     )
 
@@ -204,6 +208,7 @@ def main():
                        grant_perm=options.grant_perm,
                        is_emulator=options.is_emulator,
                        generate_utg=options.generate_utg,
+                       base_url=options.base_url,
                        is_package=options.is_package,
                        disable_rotate=options.disable_rotate
                        )
