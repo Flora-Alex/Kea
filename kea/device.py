@@ -932,7 +932,7 @@ class Device(object):
         valid_widgets_info = [(_["signature"] + "[bounds]" + str(_["bounds"])) for _ in valid_widgets]
         dest_filteredinfo_path = "%s/screen_%s.txt" % (filtered_widgets_path, self.cur_event_count)
 
-        with open(dest_filteredinfo_path, "w") as fp:
+        with open(dest_filteredinfo_path, "w", encoding="utf-8") as fp:
             fp.write("======== covered widgets =========" + "\n")
             fp.write("\n".join(covered_widget_info)) 
             fp.write("\n\n" + "========= valid widgets ==========" + "\n")
