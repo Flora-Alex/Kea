@@ -900,15 +900,19 @@ class LLMPolicy(RandomPolicy):
         find_new_state_reward = 30.0
         find_new_rules_whose_preconditions_are_satisfied = 20.0
         error_punishment = 20.0
+        """
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
         self.cur_rules_whose_preconditions_are_satisfied = self.kea.get_rules_whose_preconditions_are_satisfied()
-        reward = base_reward
         # 找到bug
         # reward += find_bug_rewards[self.check_rule()]
+        """
+        reward = base_reward
+        """
         if len(self.cur_rules_whose_preconditions_are_satisfied) > len(
                 self.last_rules_whose_preconditions_are_satisfied):
             reward += find_new_rules_whose_preconditions_are_satisfied
+        """
         # 探索到新event
         if not self.is_event_explored(event, self.from_state):
             reward += find_new_event_reward
