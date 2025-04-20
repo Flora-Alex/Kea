@@ -385,7 +385,7 @@ class RandomPolicy(KeaInputPolicy):
             disable_rotate=False,
             output_dir=None
     ):
-        super(RandomPolicy, self).__init__(device, app, kea, allow_to_generate_utg,base_url)
+        super(RandomPolicy, self).__init__(device, app, kea, allow_to_generate_utg, base_url)
         self.restart_app_after_check_property = restart_app_after_check_property
         self.number_of_events_that_restart_app = number_of_events_that_restart_app
         self.clear_and_reinstall_app = clear_and_reinstall_app
@@ -757,12 +757,19 @@ class LLMPolicy(RandomPolicy):
             kea=None,
             restart_app_after_check_property=False,
             number_of_events_that_restart_app=100,
-            clear_and_restart_app_data_after_100_events=False,
+            clear_and_reinstall_app=False,
             allow_to_generate_utg=False,
             base_url=None,
             output_dir=None,
     ):
-        super(LLMPolicy, self).__init__(device, app, kea,base_url)
+        super(LLMPolicy, self).__init__(device,
+                                        app,
+                                        kea,
+                                        restart_app_after_check_property,
+                                        number_of_events_that_restart_app,
+                                        clear_and_reinstall_app,
+                                        allow_to_generate_utg,
+                                        base_url)
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -839,17 +846,18 @@ class LLMPolicy(RandomPolicy):
                 self.to_state = self.device.get_current_state()
                 self.last_event = event
 
-                event_str = event.get_event_str(self.from_state)
+                if event is not None:
+                    event_str = event.get_event_str(self.from_state)
 
-                if self.from_state.state_str == self.to_state.state_str:
-                    self.ineffective_event_strs.add(event_str)
-                    if event_str in self.effective_event_strs:
-                        self.effective_event_strs.remove(event_str)
-                self.effective_event_strs.add(event_str)
-                
-                if is_llm_event:
-                    reward=self.CalculateReward(event)
-                    self.api.feedback(reward=reward,done=False)
+                    if self.from_state.state_str == self.to_state.state_str:
+                        self.ineffective_event_strs.add(event_str)
+                        if event_str in self.effective_event_strs:
+                            self.effective_event_strs.remove(event_str)
+                    self.effective_event_strs.add(event_str)
+
+                    if is_llm_event:
+                        reward=self.CalculateReward(event)
+                        self.api.feedback(reward=reward,done=False)
 
 
 
@@ -1102,20 +1110,13 @@ class LLMPolicy(RandomPolicy):
                 if self.restart_app_after_check_property:
                     self.logger.debug("restart app after check property")
                     return KillAppEvent(app=self.app), False
+                return None, False
             else:
                 self.logger.info(
                     "Found exectuable property in current state. No property will be checked now according to the random checking policy."
                 )
 
         event = self.generate_llm_event_based_on_utg()
-        if isinstance(event, RotateDevice):
-            if self.last_rotate_events == KEY_RotateDeviceToPortraitEvent:
-                self.last_rotate_events = KEY_RotateDeviceToLandscapeEvent
-                event = RotateDeviceToLandscapeEvent()
-            else:
-                self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
-                event = RotateDeviceToPortraitEvent()
-
         return event, True
 
     def generate_llm_event_based_on_utg(self):
@@ -1132,6 +1133,13 @@ class LLMPolicy(RandomPolicy):
             self.__action_history,
             self.__activity_history,
         )
+        if isinstance(action, RotateDevice):
+            if self.last_rotate_events == KEY_RotateDeviceToPortraitEvent:
+                self.last_rotate_events = KEY_RotateDeviceToLandscapeEvent
+                action = RotateDeviceToLandscapeEvent()
+            else:
+                self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
+                action = RotateDeviceToPortraitEvent()
         if action is not None:
             self.__action_history.append(current_state.get_action_desc(action))
             self.__all_action_history.add(current_state.get_action_desc(action))
