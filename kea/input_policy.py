@@ -824,8 +824,7 @@ class LLMPolicy(RandomPolicy):
                     # start the application
                     event = IntentEvent(self.app.get_start_intent())
                 else:
-                    event = self.generate_event()
-                    is_llm_event = True
+                    event, is_llm_event = self.generate_event()
 
                 if event is not None:
                     try:
@@ -1044,6 +1043,12 @@ class LLMPolicy(RandomPolicy):
         # print(system_message_content)
 
         # TODO: Adapt this to api interface
+        status = self.api.ask()
+        if status["status"] != "ok":
+            # Maybe training, hold for 1s
+            self.logger.error(status["status"])
+            time.sleep(1)
+            status = self.api.ask()
         actions_sampled = self.api.step(obs)
         selected_action = candidate_actions[actions_sampled["action"]]
 
@@ -1063,7 +1068,7 @@ class LLMPolicy(RandomPolicy):
         current_state = self.from_state
         if current_state is None:
             time.sleep(5)
-            return KeyEvent(name="BACK")
+            return KeyEvent(name="BACK"), False
 
         if (
                 self.event_count % self.number_of_events_that_restart_app == 0
@@ -1073,7 +1078,7 @@ class LLMPolicy(RandomPolicy):
                 "clear and restart app after %s events"
                 % self.number_of_events_that_restart_app
             )
-            return ReInstallAppEvent(self.app)
+            return ReInstallAppEvent(self.app), False
         rules_to_check = self.kea.get_rules_whose_preconditions_are_satisfied()
         for rule_to_check in rules_to_check:
             self.statistics_of_rules[str(rule_to_check.function.__name__)][
@@ -1092,8 +1097,7 @@ class LLMPolicy(RandomPolicy):
                 self.check_rule_whose_precondition_are_satisfied()
                 if self.restart_app_after_check_property:
                     self.logger.debug("restart app after check property")
-                    return KillAppEvent(app=self.app)
-                return None
+                    return KillAppEvent(app=self.app), False
             else:
                 self.logger.info(
                     "Found exectuable property in current state. No property will be checked now according to the random checking policy."
@@ -1108,7 +1112,7 @@ class LLMPolicy(RandomPolicy):
                 self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
                 event = RotateDeviceToPortraitEvent()
 
-        return event
+        return event, True
 
     def generate_llm_event_based_on_utg(self):
         """

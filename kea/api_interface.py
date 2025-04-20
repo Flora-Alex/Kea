@@ -20,6 +20,13 @@ class PPOClient:
         print(f"[CLIENT] Detached task: {self.task_id}")
         self.task_id = None
 
+    def ask(self):
+        if not self.task_id:
+            raise ValueError("No task_id to ask for step.")
+        res = requests.post(f"{self.base_url}/ask", params={"task_id": self.task_id})
+        res.raise_for_status()
+        return res.json()
+
     def step(self, obs: dict):
         if not self.task_id:
             raise ValueError("Task not attached.")
@@ -31,14 +38,13 @@ class PPOClient:
         res.raise_for_status()
         return res.json()
 
-    def feedback(self, reward: float, done: bool, next_obs: dict = None):
+    def feedback(self, reward: float, done: bool):
         if not self.task_id:
             raise ValueError("Task not attached.")
         payload = {
             "task_id": self.task_id,
             "reward": reward,
             "done": done,
-            "next_obs": next_obs or {}
         }
         res = requests.post(f"{self.base_url}/feedback", json=payload)
         res.raise_for_status()
