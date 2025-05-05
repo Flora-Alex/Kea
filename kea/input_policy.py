@@ -748,6 +748,7 @@ class LLMPolicy(RandomPolicy):
 
     def tear_down(self):
         self.api.detach()
+        self.logger.info("API detached.")
         pass
 
     def __init__(
