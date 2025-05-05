@@ -748,6 +748,7 @@ class LLMPolicy(RandomPolicy):
     """
 
     def tear_down(self):
+        self.api.detach()
         pass
 
     def __init__(
@@ -877,7 +878,6 @@ class LLMPolicy(RandomPolicy):
                 )
 
             except KeyboardInterrupt:
-                self.api.detach()
                 self.logger.info("API detached.")
                 break
             except InputInterruptedException as e:
