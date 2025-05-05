@@ -896,7 +896,7 @@ class LLMPolicy(RandomPolicy):
             self.event_count += 1
         self.tear_down()
 
-    def CalculateReward(self, event, base_reward = 50):
+    def CalculateReward(self, event, base_reward = 0.5):
         find_bug_rewards = {
             "FAILURE": 200,
             "PASS": 10,
@@ -904,10 +904,10 @@ class LLMPolicy(RandomPolicy):
             "PRECON_NOT_SATISFIED": 0,
             "NO_RULES": 0
         }
-        find_new_event_reward = 3.0
-        find_new_state_reward = 30.0
-        find_new_rules_whose_preconditions_are_satisfied = 20.0
-        error_punishment = 20.0
+        find_new_event_reward = 0.03
+        find_new_state_reward = 0.3
+        find_new_rules_whose_preconditions_are_satisfied = 0.1
+        error_punishment = 0.2
         """
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
