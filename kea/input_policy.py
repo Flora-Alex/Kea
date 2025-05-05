@@ -904,7 +904,7 @@ class LLMPolicy(RandomPolicy):
             "PRECON_NOT_SATISFIED": 0,
             "NO_RULES": 0
         }
-        find_new_event_reward = 10.0
+        find_new_event_reward = 3.0
         find_new_state_reward = 30.0
         find_new_rules_whose_preconditions_are_satisfied = 20.0
         error_punishment = 20.0
