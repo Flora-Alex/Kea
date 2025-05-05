@@ -155,3 +155,7 @@ class InputManager(object):
             if pid is not None:
                 self.device.adb.shell("kill -9 %d" % pid)
         self.enabled = False
+
+        # tear down the input policy
+        if self.policy is not None:
+            self.policy.tear_down()

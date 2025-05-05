@@ -171,7 +171,6 @@ class InputPolicy(object):
 
                 traceback.print_exc()
             self.event_count += 1
-        self.tear_down()
 
     def update_utg(self):
         self.utg.add_transition(self.last_event, self.from_state, self.to_state)
@@ -894,7 +893,6 @@ class LLMPolicy(RandomPolicy):
 
                 traceback.print_exc()
             self.event_count += 1
-        self.tear_down()
 
     def CalculateReward(self, event, base_reward = 0.5):
         find_bug_rewards = {
