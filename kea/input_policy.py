@@ -1075,9 +1075,9 @@ class LLMPolicy(RandomPolicy):
         )
 
         question = "Which action should I choose next? I shall choose No. "
-        system_message_content = f"{task_prompt}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n{question}"
+        system_message_content = f"{task_prompt}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n"
 
-        obs = {"prompt": system_message_content, "action": actions}
+        obs = {"prompt": system_message_content, "question":question, "action": actions}
         # print(system_message_content)
 
         # TODO: Adapt this to api interface
