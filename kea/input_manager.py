@@ -97,7 +97,7 @@ class InputManager(object):
         elif self.policy_name == POLICY_RANDOM:
             input_policy = RandomPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_reinstall_app= not self.is_package, allow_to_generate_utg = self.generate_utg,disable_rotate=self.disable_rotate,output_dir=self.output_dir)
         elif self.policy_name == POLICY_LLM:
-            input_policy = LLMPolicy(device, app, kea=self.kea, clear_and_reinstall_app= not self.is_package, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir,base_url=self.base_url)
+            input_policy = LLMPolicy(device, app, kea=self.kea, clear_and_reinstall_app= not self.is_package, disable_kill_and_reinstall=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir,base_url=self.base_url)
         else:
             self.logger.warning(
                 "No valid input policy specified. Using policy \"none\"."
