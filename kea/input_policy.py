@@ -18,6 +18,7 @@ from .input_event import (
     KillAppEvent,
     KillAndRestartAppEvent,
     SetTextEvent,
+    RandomEvent,
 )
 from .utg import UTG
 
@@ -814,6 +815,7 @@ class LLMPolicy(RandomPolicy):
                 #     self.device.u2.set_fastinput_ime(True)
 
                 self.logger.info("Exploration event count: %d", self.event_count)
+                self.used_random = False
                 is_llm_event=False
 
                 if self.to_state is not None:
@@ -860,6 +862,7 @@ class LLMPolicy(RandomPolicy):
 
                     if is_llm_event:
                         reward=self.CalculateReward(event)
+                        self.logger.info(f"reward: {reward}")
                         self.api.feedback(reward=reward,done=False)
 
 
@@ -907,6 +910,7 @@ class LLMPolicy(RandomPolicy):
         find_new_event_reward = 0.03
         find_new_state_reward = 0.3
         find_new_rules_whose_preconditions_are_satisfied = 0.1
+        use_random = 0.05
         error_punishment = 0.2
         kill_punishment = 0.05
         """
@@ -928,6 +932,9 @@ class LLMPolicy(RandomPolicy):
         # 探索到新state
         if not self.is_state_explored(self.to_state):
             reward += find_new_state_reward
+        # 使用随机选择
+        if self.used_random:
+            reward += use_random
         # app不在前台
         if self.to_state.get_app_activity_depth(self.app) != 0:
             reward = error_punishment
@@ -1023,11 +1030,14 @@ class LLMPolicy(RandomPolicy):
         activity = current_state.foreground_activity
         task_prompt = (
                 self.task
-                + f"My task is to select an action based on the current GUI Infomation to perform next and help the app prevent entering or escape the UI tarpit."
+                + "My task is to select an action based on the current GUI Infomation to perform next "
+                  "and help the app prevent entering or escape the UI tarpit. "
+                  "If an app is in a UI tarpit, I will try to escape it. "
+                  "However, by default, I will trust the random method and choose it. "
         )
 
         visited_page_prompt = (
-                f"Currently, the App is running on the {activity} page."
+                f"Currently, the App is running on the {activity} page.\n"
                 f"I have already visited the following activities: \n"
                 + "\n".join(activity_history)
         )
@@ -1049,9 +1059,18 @@ class LLMPolicy(RandomPolicy):
             candidate_actions.append(KillAppEvent(app=self.app))
             # candidate_actions.append(ReInstallAppEvent(self.app))
 
-        actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
+        if len(candidate_actions) > 10:
+            sampled_actions = random.sample(candidate_actions, 10)
+        else:
+            sampled_actions = candidate_actions
+        sampled_actions.append(RandomEvent())
+
+        actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(sampled_actions)]
         actions_prompt = (
-                f"Here are the actions I can take: \n"
+                "Note that if the number of actions is more than 10, I may not be able to choose some of them because "
+                "they are abbreviated by random.\n"
+                "However, by choosing random method, I may choose those not selected. And thus I prefer random method.\n"
+                "Here are the actions I can take: \n"
                 + "\n".join(actions)
         )
 
@@ -1069,7 +1088,7 @@ class LLMPolicy(RandomPolicy):
             time.sleep(1)
             status = self.api.ask()
         actions_sampled = self.api.step(obs)
-        selected_action = candidate_actions[actions_sampled["action"]]
+        selected_action = sampled_actions[actions_sampled["action"]]
 
         return selected_action, candidate_actions
 
@@ -1147,6 +1166,10 @@ class LLMPolicy(RandomPolicy):
             else:
                 self.last_rotate_events = KEY_RotateDeviceToPortraitEvent
                 action = RotateDeviceToPortraitEvent()
+        if isinstance(action, RandomEvent):
+            self.logger.info("LLM chose random event.")
+            self.used_random = True
+            action = random.choice(candidate_actions)
         if action is not None:
             self.__action_history.append(current_state.get_action_desc(action))
             self.__all_action_history.add(current_state.get_action_desc(action))

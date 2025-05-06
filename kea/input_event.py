@@ -1075,6 +1075,25 @@ class SpawnEvent(InputEvent):
         return "%s()" % self.__class__.__name__
 
 
+class RandomEvent(InputEvent):
+    def __init__(self):
+        super().__init__()
+
+    @staticmethod
+    def get_random_instance(device, app):
+        return None
+
+    def send(self, device):
+        # do nothing
+        pass
+
+    def get_event_str(self, state):
+        return "%s()" % self.__class__.__name__
+
+    def get_event_name(self):
+        return "Random"
+
+
 EVENT_TYPES = {
     KEY_KeyEvent: KeyEvent,
     KEY_TouchEvent: TouchEvent,
