@@ -762,6 +762,7 @@ class LLMPolicy(RandomPolicy):
             allow_to_generate_utg=False,
             base_url=None,
             output_dir=None,
+            disable_kill_and_reinstall=False,
     ):
         super(LLMPolicy, self).__init__(device,
                                         app,
@@ -771,6 +772,7 @@ class LLMPolicy(RandomPolicy):
                                         clear_and_reinstall_app,
                                         allow_to_generate_utg,
                                         base_url)
+        self.disable_kill_and_reinstall = disable_kill_and_reinstall
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -906,6 +908,7 @@ class LLMPolicy(RandomPolicy):
         find_new_state_reward = 0.3
         find_new_rules_whose_preconditions_are_satisfied = 0.1
         error_punishment = 0.2
+        kill_punishment = 0.05
         """
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
@@ -928,6 +931,9 @@ class LLMPolicy(RandomPolicy):
         # app不在前台
         if self.to_state.get_app_activity_depth(self.app) != 0:
             reward = error_punishment
+        # app被kill
+        if isinstance(event, KillAppEvent):
+            reward -= kill_punishment
         return reward
 
 
@@ -1039,6 +1045,9 @@ class LLMPolicy(RandomPolicy):
         candidate_actions.append(KeyEvent(name="BACK"))
         if not self.disable_rotate:
             candidate_actions.append(RotateDevice())
+        if not self.disable_kill_and_reinstall:
+            candidate_actions.append(KillAppEvent(app=self.app))
+            # candidate_actions.append(ReInstallAppEvent(self.app))
 
         actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(candidate_actions)]
         actions_prompt = (
