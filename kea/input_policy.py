@@ -878,7 +878,6 @@ class LLMPolicy(RandomPolicy):
                 )
 
             except KeyboardInterrupt:
-                self.logger.info("API detached.")
                 break
             except InputInterruptedException as e:
                 self.logger.info("stop sending events: %s" % e)

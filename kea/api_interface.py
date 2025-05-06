@@ -14,7 +14,7 @@ class PPOClient:
 
     def detach(self):
         if not self.task_id:
-            raise ValueError("No task_id to detach.")
+            return
         res = requests.post(f"{self.base_url}/detach", params={"task_id": self.task_id})
         res.raise_for_status()
         print(f"[CLIENT] Detached task: {self.task_id}")
