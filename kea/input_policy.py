@@ -965,7 +965,7 @@ class LLMPolicy(RandomPolicy):
             average = sum(absolute_values) / len(absolute_values)  # 计算平均值
             if average <=0.15:
                 reward -= similarity_punishment
-            else:
+            elif average >=0.25:
                 reward += similarity_reward
 
 
