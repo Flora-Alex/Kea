@@ -4,6 +4,7 @@ import random
 import copy
 import time
 
+from .similarity import Similarity
 from .utils import Time, generate_report, save_log, RULE_STATE
 from abc import abstractmethod
 from .input_event import (
@@ -792,7 +793,8 @@ class LLMPolicy(RandomPolicy):
         self.from_state = None
         self.task = ("I am an expert in App GUI testing to guide the testing tool to enhance the coverage of "
                      "functional scenarios in testing the App based on my extensive App testing experience.")
-
+        self.last_sim_score = 0
+        self.sim_score = 0
         # if not os.environ.get("OPENAI_API_KEY"):
         #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.api = PPOClient(base_url=base_url)
@@ -851,6 +853,13 @@ class LLMPolicy(RandomPolicy):
                 self.to_state = self.device.get_current_state()
                 self.last_event = event
 
+                last_state = self.from_state
+                last_state_screen = last_state.get_state_screen()
+                current_state = self.device.get_current_state()
+                current_state_screen = current_state.get_state_screen()
+                self.last_sim_score =self.sim_score
+                self.sim_score = Similarity.calculate_similarity(last_state_screen, current_state_screen)
+
                 if event is not None:
                     event_str = event.get_event_str(self.from_state)
 
@@ -899,10 +908,13 @@ class LLMPolicy(RandomPolicy):
                 traceback.print_exc()
             self.event_count += 1
 
+
     def CalculateReward(self, event, base_reward = 0.5):
+
+
         find_bug_rewards = {
-            "FAILURE": 200,
-            "PASS": 10,
+            "FAILURE": 0.2,
+            "PASS":0.01,
             "UI_NOT_FOUND": 0,
             "PRECON_NOT_SATISFIED": 0,
             "NO_RULES": 0
@@ -913,6 +925,11 @@ class LLMPolicy(RandomPolicy):
         use_random = 0.05
         error_punishment = 0.2
         kill_punishment = 0.05
+        similarity_reward = 0.03
+        similarity_punishment =0.05
+
+        delta_sim_score=self.sim_score - self.last_sim_score
+
         """
         # 更新rules_whose_preconditions_are_satisfied
         self.last_rules_whose_preconditions_are_satisfied = self.cur_rules_whose_preconditions_are_satisfied
@@ -941,6 +958,13 @@ class LLMPolicy(RandomPolicy):
         # app被kill
         if isinstance(event, KillAppEvent):
             reward -= kill_punishment
+        if delta_sim_score>=-0.15:
+            reward += similarity_reward
+        elif delta_sim_score>=0.2:
+            reward -= similarity_punishment
+
+
+
         return reward
 
 
@@ -1088,6 +1112,101 @@ class LLMPolicy(RandomPolicy):
             time.sleep(1)
             status = self.api.ask()
         actions_sampled = self.api.step(obs)
+
+        selected_action = sampled_actions[actions_sampled["action"]]
+
+        return selected_action, candidate_actions
+
+    def _get_action_with_LLM_simply(self, current_state, action_history, activity_history):
+        """
+        Generate answer.
+        """
+        """
+                markdown_path = "https://raw.githubusercontent.com/openatx/uiautomator2/master/README_CN.md"
+                loader = UnstructuredMarkdownLoader(markdown_path)
+                data = loader.load()
+                assert len(data) == 1
+                assert isinstance(data[0], Document)
+                readme_content = data[0].page_content
+                api_start_index = readme_content.find("API Documents")
+                if api_start_index != -1:
+                    api_content = readme_content[api_start_index:]
+                else:
+                    api_content = ""
+                    print("没有找到API Documents")
+                api_document = Document(page_content=api_content)
+                text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
+                all_splits = text_splitter.split_documents([api_document])
+
+                self.vector_store = Chroma.from_documents(documents=all_splits, embedding=self.embeddings)
+        docs = [Document(page_content="ui testing")]
+        self.vector_store = Chroma.from_documents(documents=docs, embedding=self.embeddings)
+        retriever = self.vector_store.as_retriever()
+        """
+
+        activity = current_state.foreground_activity
+        task_prompt = (
+                self.task
+                + "My task is to select an action based on the current GUI Infomation to perform next "
+                  "and help the app prevent entering or escape the UI tarpit. "
+                  "If an app is in a UI tarpit, I will try to escape it. "
+                  "However, by default, I will trust the random method and choose it. "
+        )
+
+        visited_page_prompt = (
+                f"Currently, the App is running on the {activity} page.\n"
+                f"I have already visited the following activities: \n"
+                + "\n".join(activity_history)
+        )
+
+        for i in range(len(action_history)):
+            if action_history[i] is None:
+                action_history[i] = "- None"
+        history_prompt = (
+                f"I have already completed the following steps: \n "
+                + ";\n ".join(action_history if len(action_history) > 0 else ["None"])
+        )
+
+        state_prompt, _ = current_state.get_described_actions()
+
+        candidate_actions = []
+
+        if not self.disable_kill_and_reinstall:
+            candidate_actions.append(KillAppEvent(app=self.app))
+            candidate_actions.append(ReInstallAppEvent(self.app))
+
+        if len(candidate_actions) > 10:
+            sampled_actions = random.sample(candidate_actions, 10)
+        else:
+            sampled_actions = candidate_actions
+
+        sampled_actions.append(RandomEvent())
+
+        actions = [f"{i}: {action.get_event_str(current_state)}" for i, action in enumerate(sampled_actions)]
+        actions_prompt = (
+                "Note that if the number of actions is more than 10, I may not be able to choose some of them because "
+                "they are abbreviated by random.\n"
+                "Please determine whether I need to decide whether to kill or reinstall the app based on the current actions.\n"
+                "If there are no such options or it is not needed, please adopt the random method.\n"
+                "However, by choosing random method, I may choose those not selected. And thus I prefer random method.\n"
+                "Here are the actions I can take: \n"
+                + "\n".join(actions)
+        )
+
+        question = "Which action should I choose next? I shall choose No. "
+        system_message_content = f"{task_prompt}\n{visited_page_prompt}\n{history_prompt}\n{state_prompt}\n{actions_prompt}\n"
+
+        obs = {"prompt": system_message_content, "question": question, "action": actions}
+        # print(system_message_content)
+
+        # TODO: Adapt this to api interface
+        status = self.api.ask()
+        if status["status"] != "ok":
+            # Maybe training, hold for 1s
+            self.logger.error(status["status"])
+            time.sleep(1)
+            status = self.api.ask()
+        actions_sampled = self.api.step(obs)
         selected_action = sampled_actions[actions_sampled["action"]]
 
         return selected_action, candidate_actions
@@ -1154,7 +1273,7 @@ class LLMPolicy(RandomPolicy):
         self.logger.debug("Current state: %s" % current_state.state_str)
         self._event_trace += EVENT_FLAG_EXPLORE
 
-        action, candidate_actions = self._get_action_with_LLM(
+        action, candidate_actions = self._get_action_with_LLM_simply(
             current_state,
             self.__action_history,
             self.__activity_history,
