@@ -795,6 +795,7 @@ class LLMPolicy(RandomPolicy):
                      "functional scenarios in testing the App based on my extensive App testing experience.")
         self.last_sim_score = 0
         self.sim_score = 0
+        self.delta_score_list =[]
         # if not os.environ.get("OPENAI_API_KEY"):
         #     os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter API key for OpenAI: ")
         self.api = PPOClient(base_url=base_url)
@@ -859,6 +860,8 @@ class LLMPolicy(RandomPolicy):
                 current_state_screen = current_state.get_state_screen()
                 self.last_sim_score =self.sim_score
                 self.sim_score = Similarity.calculate_similarity(last_state_screen, current_state_screen)
+                delta_sim_score = self.sim_score - self.last_sim_score
+                self.delta_score_list.append(delta_sim_score)
 
                 if event is not None:
                     event_str = event.get_event_str(self.from_state)
@@ -910,8 +913,6 @@ class LLMPolicy(RandomPolicy):
 
 
     def CalculateReward(self, event, base_reward = 0.5):
-
-
         find_bug_rewards = {
             "FAILURE": 0.2,
             "PASS":0.01,
@@ -928,7 +929,7 @@ class LLMPolicy(RandomPolicy):
         similarity_reward = 0.03
         similarity_punishment =0.05
 
-        delta_sim_score=self.sim_score - self.last_sim_score
+
 
         """
         # 更新rules_whose_preconditions_are_satisfied
@@ -958,10 +959,15 @@ class LLMPolicy(RandomPolicy):
         # app被kill
         if isinstance(event, KillAppEvent):
             reward -= kill_punishment
-        if delta_sim_score>=-0.15:
-            reward += similarity_reward
-        elif delta_sim_score>=0.2:
-            reward -= similarity_punishment
+        if len(self.delta_score_list) > 5:
+            last_five = self.delta_score_list[-5:]  # 获取最后五个元素
+            absolute_values = [abs(x) for x in last_five]  # 计算每个数的绝对值
+            average = sum(absolute_values) / len(absolute_values)  # 计算平均值
+            if average <=0.15:
+                reward -= similarity_punishment
+            else:
+                reward += similarity_reward
+
 
 
 
