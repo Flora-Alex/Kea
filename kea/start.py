@@ -51,6 +51,7 @@ class Setting:
     base_url: str = None
     is_package: bool = False
     disable_rotate: bool = False
+    enable_rag = False
 
 
 def parse_args():
@@ -94,6 +95,8 @@ def parse_args():
                         help="the url of Server")
     parser.add_argument("-disable_rotate", action="store_true", dest="disable_rotate", default=False,
                         help="Disable rotate event in the testing")
+    parser.add_argument("-enable_rag", action="store", dest="enable_rag", default=False,
+                        help="Control whether to use RAG")
     options = parser.parse_args()
 
     # load the args from the config file `config.yml`
@@ -210,7 +213,8 @@ def main():
                        generate_utg=options.generate_utg,
                        base_url=options.base_url,
                        is_package=options.is_package,
-                       disable_rotate=options.disable_rotate
+                       disable_rotate=options.disable_rotate,
+                       enable_rag=options.enable_rag
                        )
 
     # load the pdl driver for Android/HarmonyOS
