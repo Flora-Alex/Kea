@@ -763,6 +763,7 @@ class LLMPolicy(RandomPolicy):
             clear_and_reinstall_app=False,
             allow_to_generate_utg=False,
             base_url=None,
+            disable_rotate=False,
             output_dir=None,
             disable_kill_and_reinstall=False,
             enable_rag=False,
@@ -774,7 +775,9 @@ class LLMPolicy(RandomPolicy):
                                         number_of_events_that_restart_app,
                                         clear_and_reinstall_app,
                                         allow_to_generate_utg,
-                                        base_url)
+                                        base_url,
+                                        disable_rotate
+                                        )
         self.disable_kill_and_reinstall = disable_kill_and_reinstall
         self.enable_rag = enable_rag
         self.logger = logging.getLogger(self.__class__.__name__)
