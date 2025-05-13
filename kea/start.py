@@ -51,7 +51,7 @@ class Setting:
     base_url: str = None
     is_package: bool = False
     disable_rotate: bool = False
-    enable_rag = False
+    enable_rag:bool = False
 
 
 def parse_args():
