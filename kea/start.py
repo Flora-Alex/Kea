@@ -184,7 +184,8 @@ def start_kea(kea: "Kea", settings: "Setting" = None):
         settings=settings,
         generate_utg=settings.generate_utg,
         base_url=settings.base_url,
-        disable_rotate=settings.disable_rotate
+        disable_rotate=settings.disable_rotate,
+        enable_rag=settings.enable_rag
     )
 
     kea._pdl_driver.set_droidbot(droidbot)
