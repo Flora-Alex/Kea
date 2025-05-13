@@ -1,147 +1,178 @@
 <div align="center">
 <h1>Kea</h1>
 
- <a href='LICENSE'><img src='https://img.shields.io/badge/License-MIT-orange'></a> &nbsp;&nbsp;&nbsp;
- <a><img src='https://img.shields.io/badge/python-3.8, 3.9, 3.10, 3.11, 3.12, 3.13-blue'></a> &nbsp;&nbsp;&nbsp;
- <a href='https://kea-docs.readthedocs.io/en/latest/part-theory/introduction.html'><img src='https://img.shields.io/badge/doc-1.0.0-blue'></a>
 </div>
 
-<div align="center">
-    <img src="kea/resources/kea_log(1).png" alt="kea_logo" style="border-radius: 18px"/>
-</div>
+### 简介
 
+Kea 是一个通用的测试工具，通过[基于性质的测试](https://en.wikipedia.org/wiki/Software_testing#Property_testing) 发现移动（GUI）应用中的功能性错误。
 
-### Intro ([中文](README_CN.md))
+我们小组采用以下思路设计了我们改进过后的Kea
 
-Kea is a general and practical testing tool based on the idea of [property-based testing](https://en.wikipedia.org/wiki/Software_testing#Property_testing) for finding functional (logic) bugs in mobile (GUI) apps.
-Kea currently supports Android and HarmonyOS.
+1. 基于RAG和Prompt工程，将背景、当前状态、任务传递给LLM
 
+2. 直接使用LLM的RAW输出计算做某个动作的概率
 
-<p align="center">
-  <img src="kea/resources/kea-platforms.jpg" width="300"/>
-</p>
+3. 选择概率最大的行动，并根据运行结果给出一些reward或punish
 
-### Publication 
+4. 基于PPO算法的强化学习训练过程提升我们LLM解决问题的能力
 
-📘 **[Kea's Paper @ ASE 2024 (won ACM Distinguished Paper Award!)](https://xyiheng.github.io//files/Property_Based_Testing_for_Android_Apps.pdf)**
+   我们的PPO仓库：[Luinoa/PPOLLM](https://github.com/Luinoa/PPOLLM)
 
-> "General and Practical Property-based Testing for Android Apps". 
-> Yiheng Xiong, Ting Su, Jue Wang, Jingling Sun, Geguang Pu, Zhendong Su.
-> In ASE 2024. 
+### 安装和使用
 
-### Blogs (In Chinese)
+**环境配置**
 
-[别再苦哈哈写测试脚本了，生成它们吧！(一)](https://mp.weixin.qq.com/s/R2kLCkXpDjpa8wCX4Eidtg)
-
-[别再苦哈哈写测试脚本了，生成它们吧！(二)](https://mp.weixin.qq.com/s/s4WkdstNcKupu9OP8jeOXw)
-
-[别再苦哈哈写测试脚本了，生成它们吧！(三)](https://mp.weixin.qq.com/s/BjXyo-xJRmPB_sCc4pmh8g)
-
-### More Info
-
-> Find more about our work on testing/analyzing mobile apps: [ECNU-SSE-Lab - Mobile App Analysis](https://mobile-app-analysis.github.io).
-
-> A list of literature on mobile app testing and analysis: [Mobile App Analysis and Testing Literature](https://github.com/XYIheng/MobileAppTesting).
-
-
-### [Demonstration Video](https://www.bilibili.com/video/BV1QPkoYREgh/?share_source=copy_web) (In Chinese)
-
-### Docs
-
-[Full Doc](https://kea-docs.readthedocs.io/en/latest/part-theory/introduction.html)
-
-[User Manual](https://kea-docs.readthedocs.io/en/latest/part-keaUserManuel/envirnment_setup.html)
-
-[Design Manual](https://kea-docs.readthedocs.io/en/latest/part-designDocument/intro.html)
-
-[Test Report](https://kea-docs.readthedocs.io/en/latest/part-experiment/exp.html)
-
-[Coverage Report](https://ecnusse.github.io/Kea/)
-
-
-### Installation and Quickstart
-
-**Prerequisites**
-
-- Python 3.8+
+- Python 3.11
 - `adb` or `hdc` cmd tools available
 - Connect an Android / HarmonyOS device or emulator to your PC
+- CUDA（需要配合30系及以上显卡使用）
 
-[The setup guide for Android / HarmonyOS envirnments.](https://kea-technic-docs.readthedocs.io/en/latest/part-keaUserManuel/envirnment_setup.html)
+**安装**
 
-**Installation**
-
-Enter the following commands to install kea.
+输入以下命令安装 修改过后的Kea（主要修改了一些policy的细节）。
 
 ```bash
-git clone https://github.com/ecnusse/Kea.git
+git clone https://github.com/Flora-Alex/Kea.git
 cd Kea
 pip install -e .
 ```
 
-**Quick Start**
+输入以下命令获取PPOLLM
+
+```bash
+git clone https://github.com/Luinoa/PPOLLM.git
+pip install -r requirements.txt
+```
+
+再根据 shell 文件夹下的脚本，写出时候你的环境和需求的脚本，在根目录下运行，即可开始使用，对于参数的具体意义，请根据 api_server.py 下的描述进行使用，这里不再赘述。
+
+如：
+
+```bash
+#!/bin/bash
+# This script is used to run the inference server with large model.
+
+export HF_ENDPOINT=https://hf-mirror.com
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+
+
+python ./api_server.py \
+-t \
+-p 8001 \
+--policy-minibatch-size 1 \
+--model Qwen/Qwen3-8B \
+--load-path weights/PPO
+```
+
+特别注意：
+
+--policy-minibatch-size 内存极端敏感，谨慎调节。
+
+--model 建议使用支持 Accelerate 框架多卡推理的 HuggingFace 模型，根据我们的实验，8B 模型需要约 50G 显存（至少 3 张 3090）进行微调。
+
+部署过程中要是还缺什么，可以试试“缺啥补啥”。
+
+**快速开始**
+
+首先需要引入langchain需要的包，需要保证运行是处于联网状态下，否则RAG的retriever功能可能无法正常使用网络资源。
+
+```bash
+#Document loading, retrieval methods and text splitting 
+%pip install -qU langchain langchain_community 
+# Local vector store via Chroma 
+%pip install -qU langchain_chroma 
+
+%pip install -qU "unstructured[md]" nltk
+# Web Loader
+%pip install -qU beautifulsoup4
+```
+
+**注意：** 目前 LLM 模块仍处于实验阶段。我们正在积极收集反馈以改进该模块的功能和稳定性。感谢您的理解和支持，同时欢迎您提出建议和意见。
+
+### 实验数据集
+
+训练是基于运行kea检查apk对应的property的过程通过给予reward进行的，因此实验的数据集可以近似理解为不同的app
+
+经过测试如果properties对应的py文件不适合，对应的覆盖率结果也有较大差距。因此选择在原kea仓库下properties文件夹中对应的apk与原KeaPlusEvaluation仓库下已经插桩的apk的交集，也就是四个apk分别是AmazeFileManger与AntennaPod，Omninotes，Ankidroid作为实验数据集，作为参考我们的实验是将其中的AmazeFileManger与AntennaPod作为训练集，而Omninotes，Ankidroid作为测试集。
+
+输入以下命令获取我们的实验仓库
 
 ```
-kea -f example/example_property.py -a example/omninotes.apk
+git clone https://github.com/StarMaster10/KeaPlusEvaluation.git
 ```
 
-**Note:** The LLM module is currently in an experimental phase. We are actively gathering feedback to improve its functionality and stability. We appreciate your understanding and support from the community, and we welcome any suggestions or comments.
+**实验要求：**
+
+windows10以上系统（linux系统可以参照原仓库链接自行适配，仓库链接在我们的实验仓库ReadMe中提供）
+
+虚拟机设备版本为Android11版本，其他版本无法正常进行覆盖度文件转储
+
+**运行实验**
+
+在仓库的scripts目录下运行
+
+```
+python ./themis.py --avd “” --apk "YOUR_APK_DIRECTORY" -f "YOU_PROPERTIES" -p "POLICY" --time "TIME"  -o  "OUTPUT_DIRECTORY"  --offset 0  --repeat 1
+```
+
+执行完成5次后，执行以下代码，其中OUTPUT_DIRECTORY同上述代码的OUTPUT_DIRECTORY
+
+```
+python coverage_diff_tool.py -dir “OUTPUT_DIRECTORY”
+```
+
+再执行
+
+```
+ python coverage_diff_tool_average.py -dir H:\KeaPlusEvaluation-main\KeaPlusEvaluation\KeaPlusEvaluation\scripts\output\b 
+```
+
+**注意事项**
+
+我们的脚本是针对原KeaPlusEvaluation仓库下的run_hybirdDroid.ps1基础上重新增添了参数处理了逻辑增加对windows系统的适配性，但是依然存在如下问题：
+
+1.原版repeat参数失效，并没有做相对应处理，经过一些不同方法试验后仍然不能很好的重复执行，目前仍只能单次执行。
+
+2.原版提取广播器名称逻辑仍存在问题，尝试修改仍无效，目前只能手动获取，在run_hybirdDroid.ps1文件对应的$RECEIVER_NAME条目，先手动执行
+
+```
+adb -s $DEVICE_SERIAL shell pm dump $PACKAGE_NAME | Select-String "jacocoInstrument.SMSInstrumentedReceiver"
+```
+
+指令然后提取字符串中的对应参数形如
+
+```
+"it.feio.android.omninotes.alpha/it.feio.android.omninotes.jacocoInstrument.SMSInstrumentedReceiver"
+```
 
 
-The original authors of Kea are:
-[Yiheng Xiong](https://xyiheng.github.io/), 
-[Ting Su](http://tingsu.github.io/),
-[Jue Wang](https://cv.juewang.info/),
-[Jingling Sun](https://jinglingsun.github.io/),
-[Geguang Pu](),
-[Zhendong Su](https://people.inf.ethz.ch/suz/).
 
-Now we have additional active contributors:
-[Xiangchen Shen](https://xiangchenshen.github.io/), 
-[Xixian Liang](https://xixianliang.github.io/resume/),
-[Mengqian Xu]()
-[Mengqian Xu](https://mengqianx.github.io/)
+### 作者
 
-### Relevant Tools Used in Kea
+叶旭哲，罗剑波，王滨
+
+### 现版本Kea 参考的开源工具
 
 - [Droidbot](https://github.com/honeynet/droidbot)
 - [HMDroidbot](https://github.com/ecnusse/HMDroidbot)
 - [hypothesis](https://github.com/HypothesisWorks/hypothesis)
 - [hmdriver2](https://github.com/codematrixer/hmdriver2)
 - [uiautomator2](https://github.com/openatx/uiautomator2)
+- [langchain](https://github.com/langchain-ai/langchain)
 
+### 相关阅读
 
-### References
+https://dl.acm.org/doi/pdf/10.1145/263244.263267
 
+https://xyiheng.github.io//files/Property_Based_Testing_for_Android_Apps.pdf
 
-#### Relevant References for Kea
+https://ieeexplore.ieee.org/document/10638617
 
+https://ylimit.github.io/static/files/DroidBot_ICSE2017.pdf
 
-> 📘 General and Practical Property-based Testing for Android Apps. ASE 2024. [pdf](https://dl.acm.org/doi/10.1145/3691620.3694986)
+Property-Based Testing for Validating User Privacy-Related Functionalities in Social Media Apps. FSE 2024. [pdf](https://dl.acm.org/doi/10.1145/3663529.3663863)
 
-> 📘 Property-Based Testing for Validating User Privacy-Related Functionalities in Social Media Apps. FSE 2024. [pdf](https://dl.acm.org/doi/10.1145/3663529.3663863)
+Property-Based Fuzzing for Finding Data Manipulation Errors in Android Apps. ESEC/FSE 2023. [pdf](https://dl.acm.org/doi/10.1145/3611643.3616286)
 
-> 📘 An Empirical Study of Functional Bugs in Android Apps. ISSTA 2023. [pdf](https://dl.acm.org/doi/10.1145/3597926.3598138)
-
-> 📘 Property-Based Fuzzing for Finding Data Manipulation Errors in Android Apps. ESEC/FSE 2023. [pdf](https://dl.acm.org/doi/10.1145/3611643.3616286)
-
-> 📘 Characterizing and Finding System Setting-Related Defects in Android Apps. TSE 2023. [pdf](https://ieeexplore.ieee.org/document/10064083)
-
-> 📘 Understanding and Finding System Setting-related Defects in Android Apps. ISSTA 2021. [pdf](https://dl.acm.org/doi/10.1145/3460319.3464806)
-
-> 📘 Fully Automated Functional Fuzzing of Android Apps for Detecting Non-Crashing Logic Bugs. OOPSLA 2021. [pdf](https://dl.acm.org/doi/10.1145/3485533)
-
-</details>
-
-<details>
-  <summary>References for Property-based Testing</summary>
-
-📘 Property-Based Testing in Practice. ICSE 2024. [pdf](https://dl.acm.org/doi/10.1145/3597503.3639581)
-
-📘 QuickCheck: a lightweight tool for random testing of Haskell programs. ICFP 2000. [pdf](https://dl.acm.org/doi/10.1145/357766.351266)
-
-📘 Property-based testing: a new approach to testing for assurance. Software Engineering Notes 1997. [pdf](https://dl.acm.org/doi/pdf/10.1145/263244.263267)
-
-</details>
-
-</details>
+Property-Based Testing in Practice. ICSE 2024. [pdf](https://dl.acm.org/doi/10.1145/3597503.3639581)
