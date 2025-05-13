@@ -765,6 +765,7 @@ class LLMPolicy(RandomPolicy):
             base_url=None,
             output_dir=None,
             disable_kill_and_reinstall=False,
+            enable_rag=False,
     ):
         super(LLMPolicy, self).__init__(device,
                                         app,
@@ -775,6 +776,7 @@ class LLMPolicy(RandomPolicy):
                                         allow_to_generate_utg,
                                         base_url)
         self.disable_kill_and_reinstall = disable_kill_and_reinstall
+        self.enable_rag = enable_rag
         self.logger = logging.getLogger(self.__class__.__name__)
         self.output_dir = output_dir
         save_log(self.logger, self.output_dir)
@@ -1117,6 +1119,7 @@ class LLMPolicy(RandomPolicy):
             self.logger.error(status["status"])
             time.sleep(1)
             status = self.api.ask()
+
         actions_sampled = self.api.step(obs)
 
         selected_action = sampled_actions[actions_sampled["action"]]
@@ -1212,7 +1215,7 @@ class LLMPolicy(RandomPolicy):
             self.logger.error(status["status"])
             time.sleep(1)
             status = self.api.ask()
-        actions_sampled = self.api.step(obs)
+        actions_sampled = self.api.step(obs, self.enable_rag)
         selected_action = sampled_actions[actions_sampled["action"]]
 
         return selected_action, candidate_actions

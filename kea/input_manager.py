@@ -50,7 +50,8 @@ class InputManager(object):
         base_url=None,
         output_dir=None,
         is_package=False,
-        disable_rotate=False
+        disable_rotate=False,
+        enable_rag = False
     ):
         """
         manage input event sent to the target device
@@ -79,6 +80,7 @@ class InputManager(object):
         self.base_url = base_url
         self.sim_calculator = Similarity(DEFAULT_UI_TARPIT_NUM)
         self.disable_rotate=disable_rotate
+        self.enable_rag = enable_rag
         self.is_package = is_package
         self.policy = self.get_input_policy(device, app, master)
 
@@ -97,7 +99,7 @@ class InputManager(object):
         elif self.policy_name == POLICY_RANDOM:
             input_policy = RandomPolicy(device, app, kea=self.kea, number_of_events_that_restart_app = self.number_of_events_that_restart_app, clear_and_reinstall_app= not self.is_package, allow_to_generate_utg = self.generate_utg,disable_rotate=self.disable_rotate,output_dir=self.output_dir)
         elif self.policy_name == POLICY_LLM:
-            input_policy = LLMPolicy(device, app, kea=self.kea, clear_and_reinstall_app= not self.is_package, disable_kill_and_reinstall=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir,base_url=self.base_url)
+            input_policy = LLMPolicy(device, app, kea=self.kea, clear_and_reinstall_app= not self.is_package, disable_kill_and_reinstall=True, allow_to_generate_utg = self.generate_utg, output_dir=self.output_dir, base_url=self.base_url, enable_rag=self.enable_rag)
         else:
             self.logger.warning(
                 "No valid input policy specified. Using policy \"none\"."

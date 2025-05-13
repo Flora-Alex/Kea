@@ -57,6 +57,7 @@ class DroidBot(object):
         generate_utg=False,
         base_url=None,
         disable_rotate=False,
+        enable_rag=False,
         settings:"Setting"=None
     ):
         """
@@ -127,6 +128,7 @@ class DroidBot(object):
         self.generate_utg = generate_utg
         self.base_url = base_url
         self.disable_rotate = disable_rotate
+        self.enable_rag = enable_rag
         self.settings = settings
         try:
             self.init_droidbot(is_harmonyos)
@@ -176,7 +178,8 @@ class DroidBot(object):
                 base_url=self.base_url,
                 output_dir=self.output_dir,
                 is_package=self.is_package,
-                disable_rotate=self.disable_rotate
+                disable_rotate=self.disable_rotate,
+                enable_rag=self.enable_rag,
             )
             # self.send_documents()
         # initializer for HarmonyOS system
@@ -212,9 +215,13 @@ class DroidBot(object):
                 master=self.master,
                 replay_output=self.replay_output,
                 kea=self.kea,
+                number_of_events_that_restart_app=self.number_of_events_that_restart_app,
+                generate_utg=self.generate_utg,
+                base_url=self.base_url,
                 output_dir=self.output_dir,
                 is_package=self.is_package,
-                disable_rotate=self.disable_rotate)
+                disable_rotate=self.disable_rotate,
+                enable_rag=self.enable_rag)
 
     @staticmethod
     def get_instance():

@@ -27,14 +27,17 @@ class PPOClient:
         res.raise_for_status()
         return res.json()
 
-    def step(self, obs: dict):
+    def step(self, obs: dict, enable_rag: bool):
         if not self.task_id:
             raise ValueError("Task not attached.")
         payload = {
             "task_id": self.task_id,
             "obs": obs
         }
-        res = requests.post(f"{self.base_url}/step", json=payload)
+        if enable_rag:
+            res = requests.post(f"{self.base_url}/rag_step", json=payload)
+        else:
+            res = requests.post(f"{self.base_url}/step", json=payload)
         res.raise_for_status()
         return res.json()
 
