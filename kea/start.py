@@ -91,7 +91,7 @@ def parse_args():
                         help="load the args from config.yml, and the args in the command line will be ignored.")
     parser.add_argument("-utg", action="store_true", dest="generate_utg", default=False,
                         help="Generate UI transition graph")
-    parser.add_argument("-base_url", action="store", dest="base_url", default="http://localhost:8000",
+    parser.add_argument("-base_url", action="store", dest="base_url", default="http://49.52.4.115:8001",
                         help="the url of Server")
     parser.add_argument("-disable_rotate", action="store_true", dest="disable_rotate", default=False,
                         help="Disable rotate event in the testing")

@@ -875,7 +875,8 @@ class LLMPolicy(RandomPolicy):
                         self.ineffective_event_strs.add(event_str)
                         if event_str in self.effective_event_strs:
                             self.effective_event_strs.remove(event_str)
-                    self.effective_event_strs.add(event_str)
+                    else:
+                        self.effective_event_strs.add(event_str)
 
                     if is_llm_event:
                         reward=self.CalculateReward(event)
@@ -1285,7 +1286,7 @@ class LLMPolicy(RandomPolicy):
         self.logger.debug("Current state: %s" % current_state.state_str)
         self._event_trace += EVENT_FLAG_EXPLORE
 
-        action, candidate_actions = self._get_action_with_LLM_simply(
+        action, candidate_actions = self._get_action_with_LLM(
             current_state,
             self.__action_history,
             self.__activity_history,
