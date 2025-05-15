@@ -1124,7 +1124,7 @@ class LLMPolicy(RandomPolicy):
             time.sleep(1)
             status = self.api.ask()
 
-        actions_sampled = self.api.step(obs)
+        actions_sampled = self.api.step(obs,enable_rag=self.enable_rag)
 
         selected_action = sampled_actions[actions_sampled["action"]]
 
